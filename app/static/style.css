@@ -39,6 +39,18 @@ label { display: block; font-size: 13px; color: var(--text-2); }
 label > input, label > select, label > textarea { margin-top: 3px; color: var(--text); font-size: 15px; }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.greeting h1 { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+.greeting .muted { font-size: 13.5px; margin-top: 1px; }
+.top-actions { display: flex; gap: 6px; align-items: center; }
+.top-actions svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.icon-button { width: 36px; height: 36px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; background: none; border-color: transparent; color: var(--text-2); }
+.icon-button:hover, .sync-pill:hover { background: var(--hover); color: var(--text); }
+.sync-pill { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px 0 11px; border-radius: 18px; color: var(--text-2); font-size: 13px; }
+.sync-pill:disabled { cursor: progress; opacity: 1; }
+.sync-pill:disabled svg { animation: spin 1s linear infinite; }
+.sync-pill.problem { border-color: var(--critical); color: var(--critical); }
+@media (prefers-reduced-motion: reduce) { .sync-pill:disabled svg { animation: none; } }
+@media (max-width: 640px) { .greeting h1 { font-size: 18px; } .sync-pill span { display: none; } .sync-pill { width: 36px; padding: 0; justify-content: center; } }
 .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .actions.end { justify-content: flex-end; margin-top: 12px; }
 main { container: page / inline-size; max-width: 1680px; margin: 0 auto; padding: 16px 20px 76px; display: grid; gap: 16px; }

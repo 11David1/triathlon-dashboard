@@ -248,3 +248,15 @@ def test_place_name_is_removed_from_activity_title(anon):
         prompt = coach.build_prompt(conn, scope, ref, TODAY)
         assert "Musterstadt" not in prompt and '"name": "Laufen"' in prompt
     conn.close()
+
+
+def test_athlete_name_for_greeting(client):
+    assert client.get("/api/overview").json()["athlete_name"] == "David"
+    body = {"race_name": "Rennen", "race_date": "2027-08-29", "athlete_notes": "", "athlete_name": " Dave "}
+    assert client.put("/api/settings", json=body).status_code == 200
+    assert client.get("/api/settings").json()["athlete_name"] == "Dave"
+    assert client.get("/api/overview").json()["athlete_name"] == "Dave"
+    # ältere Clients ohne Namen lassen ihn stehen
+    del body["athlete_name"]
+    client.put("/api/settings", json=body)
+    assert client.get("/api/overview").json()["athlete_name"] == "Dave"

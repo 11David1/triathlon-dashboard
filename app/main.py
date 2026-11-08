@@ -21,6 +21,7 @@ from . import auth, backup, coach, db, garmin, gcal, health, trainer, whoop
 from .plan import SPORTS, match, monday
 
 ACTIVITY_SPORTS = ("swim", "bike", "run", "strength", "other")
+DEFAULT_NAME = "David"
 
 log = logging.getLogger("app")
 STATIC = Path(__file__).parent / "static"
@@ -272,6 +273,7 @@ def overview():
         alerts = health.alerts(conn)
         calendar_only = coach.calendar_only_sessions(conn, week.isoformat(), (week + dt.timedelta(days=6)).isoformat(), today.isoformat())
         recovery = _recovery(conn, today)
+        athlete_name = db.get_setting(conn, "athlete_name", DEFAULT_NAME)
     sports = {}
     for sport in ("swim", "bike", "run", "strength", "other"):
         sports[sport] = {"planned_min": 0, "done_min": 0}
@@ -295,6 +297,7 @@ def overview():
         "race": {"name": name, "date": date, "days_left": (dt.date.fromisoformat(date) - today).days},
         "sports": {k: {a: round(b) for a, b in v.items()} for k, v in sports.items()},
         "recovery": recovery,
+        "athlete_name": athlete_name,
         "garmin": {"connected": garmin.read_key() is not None,
                    "last_sync_at": float(last_sync) if last_sync else None, "error": error},
     }
@@ -831,6 +834,7 @@ class SettingsIn(BaseModel):
     race_name: str = Field(min_length=1, max_length=80)
     race_date: dt.date
     athlete_notes: str = Field(default="", max_length=4000)
+    athlete_name: str | None = Field(default=None, max_length=40)
 
 
 class KeyIn(BaseModel):
@@ -858,6 +862,7 @@ def get_settings():
             "race_name": db.get_setting(conn, "race_name", coach.DEFAULT_RACE_NAME),
             "race_date": db.get_setting(conn, "race_date", coach.DEFAULT_RACE_DATE),
             "athlete_notes": db.get_setting(conn, "athlete_notes", ""),
+            "athlete_name": db.get_setting(conn, "athlete_name", DEFAULT_NAME),
             "garmin_key_set": garmin.read_key() is not None,
             "garmin_key_expires": db.get_setting(conn, "garmin_key_expires", ""),
             "calendar_count": len(gcal.read_urls()),
@@ -882,6 +887,8 @@ def put_settings(body: SettingsIn):
         db.set_setting(conn, "race_name", body.race_name.strip())
         db.set_setting(conn, "race_date", body.race_date.isoformat())
         db.set_setting(conn, "athlete_notes", body.athlete_notes.strip())
+        if body.athlete_name is not None:
+            db.set_setting(conn, "athlete_name", body.athlete_name.strip())
         conn.commit()
     return {"ok": True}
 

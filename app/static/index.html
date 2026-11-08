@@ -9,14 +9,21 @@
 </head>
 <body>
 <header class="topbar">
-  <div>
-    <h1 id="race-name">Trainings-Dashboard</h1>
-    <p id="sync-status" class="muted"></p>
+  <div class="greeting">
+    <h1 id="greeting">Hallo</h1>
+    <p id="greeting-sub" class="muted"></p>
   </div>
-  <div class="actions">
-    <button id="btn-sync">Jetzt abgleichen</button>
-    <button id="btn-settings">Einstellungen</button>
-    <button id="btn-logout">Abmelden</button>
+  <div class="top-actions">
+    <button id="btn-sync" class="sync-pill" title="Jetzt mit Garmin und WHOOP abgleichen">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5A5.6 5.6 0 0 0 3.2 4.6M2.5 9.5a5.6 5.6 0 0 0 10.3 1.9M3 1.8v3h3M13 14.2v-3h-3"/></svg>
+      <span id="sync-status">Abgleichen</span>
+    </button>
+    <button id="btn-settings" class="icon-button" title="Einstellungen" aria-label="Einstellungen">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 .01 0M6.9 1.5h2.2l.4 1.8 1.3.7 1.7-.7 1.1 1.9-1.4 1.2v1.4l1.4 1.2-1.1 1.9-1.7-.7-1.3.7-.4 1.8H6.9l-.4-1.8-1.3-.7-1.7.7-1.1-1.9 1.4-1.2V7.2L2.4 6l1.1-1.9 1.7.7 1.3-.7z"/></svg>
+    </button>
+    <button id="btn-logout" class="icon-button" title="Abmelden" aria-label="Abmelden">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3.5v11H6M10 4.8 13.2 8 10 11.2M13 8H6.5"/></svg>
+    </button>
   </div>
 </header>
 
@@ -260,6 +267,7 @@
     <div class="form-grid">
       <label>Name<input id="set-race-name" required maxlength="80"></label>
       <label>Datum<input id="set-race-date" type="date" required></label>
+      <label>Dein Vorname für die Begrüßung<input id="set-athlete-name" maxlength="40" autocomplete="given-name"></label>
       <label class="wide">Infos für die Auswertung
         <textarea id="set-notes" rows="4" maxlength="4000" placeholder="z. B. Zielzeit, FTP, Laufschwelle, Stärken und Schwächen, Verletzungen, verfügbare Stunden pro Woche"></textarea>
       </label>

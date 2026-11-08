@@ -142,15 +142,64 @@ function renderAlerts(alerts) {
     alert.action === "settings" ? el("button", { type: "button", textContent: "Einstellungen", on: { click: openSettings } }) : null)));
 }
 
+function greetingWord(hour) {
+  if (hour >= 5 && hour < 11) return "Guten Morgen";
+  if (hour >= 11 && hour < 14) return "Mahlzeit";
+  if (hour >= 14 && hour < 18) return "Guten Tag";
+  if (hour >= 18 && hour < 23) return "Guten Abend";
+  return "Noch wach";
+}
+
+function renderGreeting() {
+  const o = state.overview;
+  if (!o) return;
+  const now = new Date();
+  const word = greetingWord(now.getHours());
+  const name = (o.athlete_name || "").trim();
+  $("greeting").textContent = word === "Noch wach" ? `Noch wach${name ? `, ${name}` : ""}?` : `${word}${name ? `, ${name}` : ""}`;
+  const date = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  const days = o.race.days_left;
+  const race = days > 0 ? `noch ${num(days)} Tage bis ${o.race.name}` : days === 0 ? `heute ist ${o.race.name}` : o.race.name;
+  $("greeting-sub").textContent = `${date} · ${race}`;
+}
+
+function sinceText(seconds) {
+  const minutes = Math.round((Date.now() / 1000 - seconds) / 60);
+  if (minutes < 1) return "gerade eben";
+  if (minutes < 60) return `vor ${minutes} Min.`;
+  const time = new Date(seconds * 1000);
+  const sameDay = time.toDateString() === new Date().toDateString();
+  return sameDay ? `um ${time.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}` : time.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+}
+
+function renderSyncPill() {
+  const o = state.overview;
+  const pill = $("btn-sync");
+  if (!o || pill.disabled) return;
+  const g = o.garmin;
+  pill.classList.toggle("problem", Boolean(g.error));
+  if (!g.connected) {
+    $("sync-status").textContent = "Garmin verbinden";
+    pill.title = "Garmin ist noch nicht verbunden. Den Key trägst du in den Einstellungen ein.";
+  } else if (g.last_sync_at) {
+    $("sync-status").textContent = sinceText(g.last_sync_at);
+    pill.title = `Zuletzt abgeglichen: ${new Date(g.last_sync_at * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}. Klicken für einen neuen Abgleich.`;
+  } else {
+    $("sync-status").textContent = "erster Abgleich läuft";
+    pill.title = "Garmin ist verbunden, der erste Abgleich läuft.";
+  }
+}
+
+// Begrüßung und "vor x Min." bleiben aktuell, auch wenn die Seite lange offen ist.
+setInterval(() => { renderGreeting(); renderSyncPill(); }, 60000);
+
 function renderOverview(o) {
   state.today = o.today;
   state.currentWeek = o.week_start;
-  $("race-name").textContent = `${o.race.name}`;
   document.title = `${o.race.name} · Dashboard`;
-  const g = o.garmin;
-  if (!g.connected) $("sync-status").textContent = "Garmin ist noch nicht verbunden";
-  else if (g.last_sync_at) $("sync-status").textContent = `Garmin zuletzt abgeglichen: ${new Date(g.last_sync_at * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}`;
-  else $("sync-status").textContent = "Garmin verbunden, erster Abgleich läuft";
+  state.overview = o;
+  renderGreeting();
+  renderSyncPill();
   renderAlerts(o.alerts);
 
   const weeks = Math.floor(o.race.days_left / 7);
@@ -1446,6 +1495,7 @@ async function openSettings() {
   $("set-race-name").value = s.race_name;
   $("set-race-date").value = s.race_date;
   $("set-notes").value = s.athlete_notes;
+  $("set-athlete-name").value = s.athlete_name;
   $("set-key").value = "";
   $("key-error").hidden = true;
   $("key-state").textContent = s.garmin_key_set ? "Ein Key ist hinterlegt. Trage nur dann einen neuen ein, wenn du ihn ersetzen willst." : "Noch kein Key hinterlegt.";
@@ -1473,7 +1523,7 @@ async function openSettings() {
 
 async function saveSettings(event) {
   event.preventDefault();
-  await api("/api/settings", { method: "PUT", body: { race_name: $("set-race-name").value, race_date: $("set-race-date").value, athlete_notes: $("set-notes").value } });
+  await api("/api/settings", { method: "PUT", body: { race_name: $("set-race-name").value, race_date: $("set-race-date").value, athlete_notes: $("set-notes").value, athlete_name: $("set-athlete-name").value } });
   $("settings-dialog").close();
   await loadOverview();
 }
@@ -1646,16 +1696,21 @@ function wire() {
   });
   $("btn-sync").addEventListener("click", async (event) => {
     const button = event.currentTarget;
+    if (state.overview && !state.overview.garmin.connected) {
+      openSettings();
+      return;
+    }
     button.disabled = true;
-    button.textContent = "Gleiche ab …";
+    $("sync-status").textContent = "gleiche ab …";
     try {
       await api("/api/sync", { method: "POST" });
+      button.disabled = false;
       await refreshAll();
     } catch (error) {
       showBanner(error.message);
     } finally {
       button.disabled = false;
-      button.textContent = "Jetzt abgleichen";
+      renderSyncPill();
     }
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
