@@ -57,6 +57,9 @@ main { container: page / inline-size; max-width: 1680px; margin: 0 auto; padding
 .stat .label { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 .stat .value { font-size: 25px; font-weight: 650; line-height: 1.25; }
 .stat .value small { font-size: 14px; font-weight: 400; color: var(--text-2); }
+.recovery-good { color: var(--good); }
+.recovery-medium { color: var(--warning-ink); }
+.recovery-low { color: var(--critical); }
 .stat .note { font-size: 12.5px; color: var(--muted); }
 .meter { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 7px; overflow: hidden; }
 .meter > span { display: block; height: 100%; border-radius: 3px; }

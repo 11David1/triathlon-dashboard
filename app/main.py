@@ -271,6 +271,7 @@ def overview():
         error = db.get_setting(conn, "last_sync_error", "")
         alerts = health.alerts(conn)
         calendar_only = coach.calendar_only_sessions(conn, week.isoformat(), (week + dt.timedelta(days=6)).isoformat(), today.isoformat())
+        recovery = _recovery(conn, today)
     sports = {}
     for sport in ("swim", "bike", "run", "strength", "other"):
         sports[sport] = {"planned_min": 0, "done_min": 0}
@@ -293,6 +294,7 @@ def overview():
         "week_start": week.isoformat(),
         "race": {"name": name, "date": date, "days_left": (dt.date.fromisoformat(date) - today).days},
         "sports": {k: {a: round(b) for a, b in v.items()} for k, v in sports.items()},
+        "recovery": recovery,
         "garmin": {"connected": garmin.read_key() is not None,
                    "last_sync_at": float(last_sync) if last_sync else None, "error": error},
     }

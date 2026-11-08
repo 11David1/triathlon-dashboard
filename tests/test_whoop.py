@@ -194,3 +194,13 @@ def test_local_date_uses_offset():
     assert whoop.local_date("2026-11-06T23:30:00.000Z", "+08:00") == "2026-11-07"
     assert whoop.local_date("2026-11-06T23:30:00.000Z", "-05:00") == "2026-11-06"
     assert whoop.local_date("kaputt", "+01:00") is None
+
+
+def test_overview_carries_recovery_for_top_bar(client):
+    today = dt.date.today().isoformat()
+    conn = db.connect()
+    conn.execute("INSERT INTO wellness(date,whoop_recovery,whoop_hrv) VALUES(?,?,?)", (today, 21, 51.5))
+    conn.commit()
+    conn.close()
+    recovery = client.get("/api/overview").json()["recovery"]
+    assert recovery["source"] == "whoop" and recovery["recovery"]["value"] == 21 and recovery["hrv"]["value"] == 51.5

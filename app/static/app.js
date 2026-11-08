@@ -106,6 +106,33 @@ function stat(label, value, note, sport, ratio) {
   return box;
 }
 
+// WHOOP-Zonen: grün ab 67 %, gelb ab 34 %, darunter rot.
+function recoveryZone(value) {
+  if (value >= 67) return ["good", "gut erholt"];
+  if (value >= 34) return ["medium", "mittel erholt"];
+  return ["low", "wenig erholt"];
+}
+
+function recoveryStat(r) {
+  if (!r || r.source !== "whoop") return null;
+  const entry = r.recovery;
+  if (entry.value === null) return stat("WHOOP Recovery", [el("small", { textContent: "noch kein Wert" })], "Kommt nach dem Aufwachen");
+  const [zone, word] = recoveryZone(entry.value);
+  const label = entry.date === state.today ? "Recovery heute" : `Recovery vom ${deShort(entry.date)}`;
+  const parts = [];
+  if (r.hrv.value !== null) parts.push(`HRV ${num(r.hrv.value)} ms`);
+  if (r.resting_hr.value !== null) parts.push(`Ruhepuls ${num(r.resting_hr.value)}`);
+  if (r.sleep_s.value !== null) parts.push(`Schlaf ${hours(r.sleep_s.value)}`);
+  const value = [el("span", { class: `recovery-${zone}`, textContent: `${num(entry.value)} %` }), el("small", { textContent: ` ${word}` })];
+  const box = stat(label, value, parts.join(" · "));
+  if (entry.average !== null) box.title = `Schnitt der 4 Wochen davor: ${num(entry.average)} %`;
+  const fill = el("span", { class: `recovery-${zone}` });
+  fill.style.width = `${Math.max(2, Math.min(100, entry.value))}%`;
+  fill.style.background = "currentColor";
+  box.append(el("div", { class: "meter" }, fill));
+  return box;
+}
+
 function renderAlerts(alerts) {
   const banner = $("banner");
   banner.hidden = !alerts.length;
@@ -128,6 +155,8 @@ function renderOverview(o) {
 
   const weeks = Math.floor(o.race.days_left / 7);
   const stats = [stat("Bis zum Rennen", [`${num(o.race.days_left)} `, el("small", { textContent: "Tage" })], `${de(o.race.date)} · ${weeks} Wochen`)];
+  const recovery = recoveryStat(o.recovery);
+  if (recovery) stats.push(recovery);
   for (const sport of ["swim", "bike", "run"]) {
     const s = o.sports[sport];
     const note = s.planned_min ? `von ${hours(s.planned_min * 60)} geplant` : "nichts geplant";
