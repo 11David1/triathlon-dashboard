@@ -118,6 +118,11 @@ def test_analysis_request_validation(client):
     assert client.post("/api/analyses", json={"scope": "shell", "ref": "1"}).status_code == 422
 
 
+def test_overview_without_race_date(client):
+    race = client.get("/api/overview").json()["race"]
+    assert race["name"] == "Wettkampf" and race["date"] == "" and race["days_left"] is None
+
+
 def test_settings_and_overview(client):
     assert client.put("/api/settings", json={"race_name": "Rennen", "race_date": "2027-08-29", "athlete_notes": "FTP 250"}).status_code == 200
     overview = client.get("/api/overview").json()
@@ -251,7 +256,7 @@ def test_place_name_is_removed_from_activity_title(anon):
 
 
 def test_athlete_name_for_greeting(client):
-    assert client.get("/api/overview").json()["athlete_name"] == "David"
+    assert client.get("/api/overview").json()["athlete_name"] == "Anna"
     body = {"race_name": "Rennen", "race_date": "2027-08-29", "athlete_notes": "", "athlete_name": " Dave "}
     assert client.put("/api/settings", json=body).status_code == 200
     assert client.get("/api/settings").json()["athlete_name"] == "Dave"

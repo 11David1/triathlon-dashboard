@@ -6,8 +6,16 @@ import re
 from . import db
 from .plan import match, monday
 
+# Bis der Athlet seinen Wettkampf unter Einstellungen einträgt.
 DEFAULT_RACE_NAME = "Wettkampf"
-DEFAULT_RACE_DATE = "2027-08-29"
+DEFAULT_RACE_DATE = ""
+
+
+def days_until(date: str, today: dt.date) -> int | None:
+    try:
+        return (dt.date.fromisoformat(date) - today).days
+    except ValueError:
+        return None
 
 SYSTEM = """Du bist ein erfahrener Triathlon-Coach und wertest Trainingsdaten für einen Athleten aus, \
 der sich auf eine Mitteldistanz vorbereitet (1,9 km Schwimmen, 90 km Rad, 21,1 km Laufen).
@@ -59,11 +67,7 @@ def clean(obj):
 def _race(conn, today: dt.date) -> dict:
     name = db.get_setting(conn, "race_name", DEFAULT_RACE_NAME)
     date = db.get_setting(conn, "race_date", DEFAULT_RACE_DATE)
-    try:
-        days = (dt.date.fromisoformat(date) - today).days
-    except ValueError:
-        days = None
-    return {"name": name, "datum": date, "tage_bis_rennen": days}
+    return {"name": name, "datum": date or None, "tage_bis_rennen": days_until(date, today)}
 
 
 def _load_by_week(conn, today: dt.date, weeks: int = 6) -> list[dict]:

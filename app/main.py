@@ -26,7 +26,11 @@ ACTIVITY_SPORTS = ("swim", "bike", "run", "strength", "other")
 log = logging.getLogger("app")
 STATIC = Path(__file__).parent / "static"
 COOKIE = "__Host-tri_session"
-ORIGIN = os.environ.get("TRI_ORIGIN", "https://training.example.org")
+# Öffentliche Adresse des Dashboards, z. B. https://training.example.org. Dient der CSRF-Prüfung und dem WHOOP-Rückweg.
+ORIGIN = os.environ.get("TRI_ORIGIN", "").strip().rstrip("/")
+if not ORIGIN.startswith(("https://", "http://")):
+    raise RuntimeError("TRI_ORIGIN fehlt oder ist ungültig: öffentliche Adresse eintragen, z. B. "
+                       "TRI_ORIGIN=https://training.example.org in /etc/triathlon-dashboard.env (siehe README).")
 SYNC_INTERVAL_S = int(os.environ.get("TRI_SYNC_INTERVAL_S", 1800))
 WHOOP_CALLBACK = "/api/whoop/callback"
 # Der WHOOP-Rückweg kommt von außen, dabei schickt der Browser das strenge Sitzungs-Cookie nicht mit.
@@ -319,7 +323,7 @@ def overview():
         "alerts": alerts,
         "today": today.isoformat(),
         "week_start": week.isoformat(),
-        "race": {"name": name, "date": date, "days_left": (dt.date.fromisoformat(date) - today).days},
+        "race": {"name": name, "date": date, "days_left": coach.days_until(date, today)},
         "sports": {k: {a: round(b) for a, b in v.items()} for k, v in sports.items()},
         "recovery": recovery,
         "athlete_name": athlete_name,

@@ -1,7 +1,11 @@
 #!/bin/sh
 # Als triathlon ausführen, damit neue Ordner und Datenbanken der Web-App gehören.
 cd /opt/triathlon-dashboard || exit 1
+# Für die Adresse in der Startcode-Meldung.
+if [ -r /etc/triathlon-dashboard.env ]; then
+  set -a; . /etc/triathlon-dashboard.env; set +a
+fi
 if [ "$(id -u)" = 0 ]; then
-  exec runuser -u triathlon -- /opt/triathlon-dashboard/venv/bin/python scripts/users.py "$@"
+  exec runuser -u triathlon -- env TRI_ORIGIN="${TRI_ORIGIN:-}" /opt/triathlon-dashboard/venv/bin/python scripts/users.py "$@"
 fi
 exec /opt/triathlon-dashboard/venv/bin/python scripts/users.py "$@"

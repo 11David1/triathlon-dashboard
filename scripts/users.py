@@ -5,6 +5,7 @@
   benutzer anlegen NAME [ANZEIGENAME]   legt an und zeigt einen einmaligen Startcode
   benutzer zuruecksetzen NAME           neuer Startcode, Passwort ungültig, alle Geräte abgemeldet
   benutzer passwort NAME                Passwort direkt setzen (unsichtbare Eingabe), meldet alle Geräte ab
+  benutzer claude NAME abo|api_key      abo: nutzt die Claude-Anmeldung des Servers, api_key: nur eigener Key (Standard)
 """
 import getpass
 import os
@@ -17,7 +18,8 @@ from app import users  # noqa: E402
 
 def _show_code(name: str, code: str) -> None:
     print(f"\nStartcode für {name}: {code}")
-    print(f"Gültig {users.SETUP_DAYS} Tage. Anmelden auf https://training.example.org mit Benutzername {name} und diesem Code,")
+    where = os.environ.get("TRI_ORIGIN", "").strip() or "dem Dashboard"
+    print(f"Gültig {users.SETUP_DAYS} Tage. Anmelden auf {where} mit Benutzername {name} und diesem Code,")
     print("danach muss ein eigenes Passwort gesetzt werden. Der Code wird nur gehasht gespeichert und nicht wieder angezeigt.")
 
 
@@ -27,9 +29,9 @@ def main(args: list[str]) -> int:
     command = args[0] if args else "liste"
     if command == "liste":
         conn = users.connect()
-        for row in conn.execute("SELECT name, display_name, dir, password_hash IS NOT NULL p FROM users ORDER BY created_at"):
+        for row in conn.execute("SELECT name, display_name, dir, claude, password_hash IS NOT NULL p FROM users ORDER BY created_at"):
             state = "Passwort gesetzt" if row["p"] else "wartet auf ersten Login"
-            print(f"{row['name']:<16} {row['display_name']:<20} {state:<24} data/{row['dir']}")
+            print(f"{row['name']:<16} {row['display_name']:<20} {state:<24} claude={row['claude']:<8} data/{row['dir']}")
         conn.close()
         return 0
     if len(args) < 2:
@@ -42,6 +44,12 @@ def main(args: list[str]) -> int:
             _show_code(name, users.add(name, display))
         elif command == "zuruecksetzen":
             _show_code(name, users.reset(name))
+        elif command == "claude":
+            if len(args) != 3:
+                print(__doc__)
+                return 1
+            users.set_claude(name, args[2].strip().lower())
+            print(f"{name} nutzt jetzt Claude über: {'das Abo des Servers' if args[2].strip().lower() == users.CLAUDE_ABO else 'den eigenen API-Key'}.")
         elif command == "passwort":
             if not sys.stdin.isatty():
                 print("Bitte direkt im Terminal ausführen (die Eingabe ist dann unsichtbar).")

@@ -6,6 +6,7 @@ After=network.target
 User=triathlon
 Group=triathlon
 Environment=TZ=Europe/Berlin
+EnvironmentFile=/etc/triathlon-dashboard.env
 WorkingDirectory=/opt/triathlon-dashboard
 ExecStart=/opt/triathlon-dashboard/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8090 --no-server-header
 Restart=always

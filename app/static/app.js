@@ -127,7 +127,8 @@ function renderGreeting() {
   $("greeting-sub").textContent = date;
   const days = o.race.days_left;
   const chip = $("race-chip");
-  chip.hidden = days < 0;
+  // Ohne eingetragenes Datum ist days_left null, dann bleibt der Chip weg.
+  chip.hidden = days == null || days < 0;
   chip.title = `${o.race.name}, ${de(o.race.date)}`;
   chip.replaceChildren(...(days > 0 ? [el("b", { textContent: num(days) }), ` ${days === 1 ? "Tag" : "Tage"} bis ${o.race.name}`] : [el("b", { textContent: "Heute" }), ` ist ${o.race.name}`]));
 }

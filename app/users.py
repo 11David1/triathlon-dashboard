@@ -2,8 +2,9 @@
 
 Neue Benutzer bekommen einen einmaligen Startcode (nur gehasht gespeichert). Beim ersten Login
 mit Benutzername und Startcode muss ein eigenes Passwort gesetzt werden, danach gilt nur noch das.
-Die Daten jedes Benutzers liegen in einem eigenen Ordner mit eigener Datenbank. David behält den
-bisherigen Ordner data/ selbst, damit Sicherung und Wiederherstellung unverändert bleiben.
+Die Daten jedes Benutzers liegen in einem eigenen Ordner mit eigener Datenbank (data/users/<name>/).
+Nur wer von der früheren Einzelbenutzer-Version übernommen wurde, behält den Ordner data/ selbst,
+damit Sicherung und Wiederherstellung unverändert bleiben.
 """
 import re
 import secrets
@@ -39,10 +40,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
-# Wie Trainer und Auswertung Claude aufrufen: "abo" = Claude-Anmeldung des Servers (Davids Abo),
-# "api_key" = nur mit dem eigenen API-Key des Benutzers, nie über das Abo.
+# Wie Trainer und Auswertung Claude aufrufen: "abo" = Claude-Anmeldung des Servers (das Abo des Betreibers),
+# "api_key" = nur mit dem eigenen API-Key des Benutzers, nie über das Abo. Neue Benutzer bekommen "api_key",
+# das Abo gibt der Betreiber ausdrücklich frei (benutzer claude NAME abo).
 CLAUDE_ABO = "abo"
 CLAUDE_API_KEY = "api_key"
+# Name für den Benutzer, der beim Umstieg von der Einzelbenutzer-Version entsteht.
+LEGACY_USER = "admin"
 
 
 @dataclass(frozen=True)
@@ -78,15 +82,15 @@ def _user(row) -> User:
 
 
 def init() -> None:
-    """Legt die Tabelle an und übernimmt beim ersten Start das bisherige Einzel-Passwort als Benutzer david."""
+    """Legt die Tabelle an und übernimmt beim ersten Start ein Einzel-Passwort der alten Version als Benutzer admin."""
     db.ROOT_DIR.mkdir(parents=True, exist_ok=True)
     conn = connect()
     try:
         conn.executescript(SCHEMA)
         if "claude" not in {r["name"] for r in conn.execute("PRAGMA table_info(users)")}:
-            # Bis hierhin lief alles über das Abo, das bleibt nur für david so.
+            # Bis hierhin lief alles über das Abo, das bleibt nur für den übernommenen Benutzer (Ordner data/) so.
             conn.execute("ALTER TABLE users ADD COLUMN claude TEXT NOT NULL DEFAULT 'api_key'")
-            conn.execute("UPDATE users SET claude='abo' WHERE name='david'")
+            conn.execute("UPDATE users SET claude='abo' WHERE dir='.'")
         if conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"] == 0:
             _migrate_single_user(conn)
         conn.commit()
@@ -109,11 +113,11 @@ def _migrate_single_user(conn) -> None:
         sessions = list(legacy.execute("SELECT token_hash, expires_at FROM sessions")) if has_sessions else []
     finally:
         legacy.close()
-    conn.execute("INSERT INTO users(name,display_name,dir,password_hash,created_at,claude) VALUES('david','David','.',?,?,'abo')",
-                 (row["value"] if row else None, time.time()))
+    conn.execute("INSERT INTO users(name,display_name,dir,password_hash,created_at,claude) VALUES(?,?,'.',?,?,'abo')",
+                 (LEGACY_USER, LEGACY_USER.capitalize(), row["value"] if row else None, time.time()))
     # Angemeldete Geräte bleiben angemeldet.
-    conn.executemany("INSERT OR IGNORE INTO sessions(token_hash,user,expires_at) VALUES(?, 'david', ?)",
-                     [(s["token_hash"], s["expires_at"]) for s in sessions])
+    conn.executemany("INSERT OR IGNORE INTO sessions(token_hash,user,expires_at) VALUES(?,?,?)",
+                     [(s["token_hash"], LEGACY_USER, s["expires_at"]) for s in sessions])
 
 
 def all_users() -> list[User]:
@@ -164,6 +168,19 @@ def add(name: str, display_name: str) -> str:
     finally:
         conn.close()
     return code
+
+
+def set_claude(name: str, mode: str) -> None:
+    """Legt fest, ob der Benutzer das Claude-Abo des Servers nutzen darf oder einen eigenen API-Key braucht."""
+    if mode not in (CLAUDE_ABO, CLAUDE_API_KEY):
+        raise ValueError(f"Claude-Modus: {CLAUDE_ABO} oder {CLAUDE_API_KEY}.")
+    conn = connect()
+    try:
+        if not conn.execute("UPDATE users SET claude=? WHERE name=?", (mode, name)).rowcount:
+            raise ValueError(f"Benutzer {name} gibt es nicht.")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def reset(name: str) -> str:

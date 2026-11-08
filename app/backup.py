@@ -18,7 +18,7 @@ NAME = re.compile(r"^triathlon-\d{4}-\d{2}-\d{2}_\d{6}\.db\.gz$")
 
 
 def backup_dir() -> Path:
-    """Davids Sicherungen liegen wie bisher direkt im Ordner, die anderer Benutzer in users/<name>."""
+    """Sicherungen landen in users/<name>, nur die des übernommenen Einzelbenutzers (data/) direkt im Ordner."""
     base = Path(os.environ.get("TRI_BACKUP_DIR", "/var/backups/triathlon-dashboard"))
     relative = db.data_dir().resolve().relative_to(db.ROOT_DIR.resolve())
     return base / relative

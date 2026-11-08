@@ -286,7 +286,7 @@ def month(client, start=-20, end=20):
     ("Kraft Oberkörper Push 40′", "strength"), ("Gym: Beine (schwer)", "strength"), ("Oberkörper B (Volumen)", "strength"), ("Beine", "strength"),
     ("Tennis", "other"), ("Paddel", "other"), ("Buchung - TC Blau-Weiß Musterstadt e.V.", "other"),
 ])
-def test_real_training_titles_are_recognised(title, sport):
+def test_training_titles_are_recognised(title, sport):
     assert classify_title(title) == sport
 
 

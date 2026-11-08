@@ -7,6 +7,7 @@ import time
 
 os.environ["TRI_DATA_DIR"] = tempfile.mkdtemp(prefix="tri-test-")
 os.environ["TRI_SYNC_INTERVAL_S"] = "0"
+os.environ["TRI_ORIGIN"] = "https://training.example.org"
 
 import httpx
 import pytest
@@ -15,7 +16,7 @@ from fastapi.testclient import TestClient
 from app import auth, db, garmin, gcal, users, whoop
 from app.main import app, throttle
 
-# Tests ohne Anfrage arbeiten in Davids Datenordner, wie die Web-App nach seinem Login.
+# Tests ohne Anfrage arbeiten in Annas Datenordner, wie die Web-App nach seinem Login.
 db._current_dir.set(db.ROOT_DIR)
 
 PASSWORD = "richtig-langes-passwort"
@@ -74,7 +75,7 @@ def anon(fake):
     accounts = users.connect()
     accounts.execute("DELETE FROM users")
     accounts.execute("DELETE FROM sessions")
-    accounts.execute("INSERT INTO users(name,display_name,dir,password_hash,created_at,claude) VALUES('david','David','.',?,0,'abo')",
+    accounts.execute("INSERT INTO users(name,display_name,dir,password_hash,created_at,claude) VALUES('anna','Anna','.',?,0,'abo')",
                      (auth.hash_password(PASSWORD),))
     accounts.commit()
     accounts.close()
@@ -95,5 +96,5 @@ def anon(fake):
 
 @pytest.fixture
 def client(anon):
-    assert anon.post("/api/login", json={"username": "david", "password": PASSWORD}).status_code == 200
+    assert anon.post("/api/login", json={"username": "anna", "password": PASSWORD}).status_code == 200
     return anon

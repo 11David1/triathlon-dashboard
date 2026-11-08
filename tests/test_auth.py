@@ -35,8 +35,8 @@ def test_login_fails_closed_without_password(anon):
     conn.execute("UPDATE users SET password_hash=NULL")
     conn.commit()
     conn.close()
-    assert login(anon, "david", "").status_code == 401
-    assert login(anon, "david", "egal").status_code == 401
+    assert login(anon, "anna", "").status_code == 401
+    assert login(anon, "anna", "egal").status_code == 401
 
 
 def test_unknown_user_rejected(anon):
@@ -45,16 +45,16 @@ def test_unknown_user_rejected(anon):
 
 def test_wrong_password_rejected_and_throttled(anon):
     for _ in range(5):
-        assert login(anon, "david", "falsch").status_code == 401
-    assert login(anon, "david", PASSWORD).status_code == 429
+        assert login(anon, "anna", "falsch").status_code == 401
+    assert login(anon, "anna", PASSWORD).status_code == 429
 
 
 def test_username_case_insensitive(anon):
-    assert login(anon, " David ", PASSWORD).status_code == 200
+    assert login(anon, " Anna ", PASSWORD).status_code == 200
 
 
 def test_cookie_flags(anon):
-    response = login(anon, "david", PASSWORD)
+    response = login(anon, "anna", PASSWORD)
     cookie = response.headers["set-cookie"]
     for flag in ("__Host-tri_session=", "HttpOnly", "Secure", "SameSite=strict", "Path=/"):
         assert flag in cookie
@@ -97,74 +97,74 @@ def test_password_hash_roundtrip():
 
 # --- Weitere Benutzer ------------------------------------------------------
 
-def _julian(anon):
-    code = users.add("julian", "Julian")
+def _ben(anon):
+    code = users.add("ben", "Ben")
     return code
 
 
 def test_new_user_must_set_password_on_first_login(anon):
-    code = _julian(anon)
-    first = login(anon, "julian", code)
+    code = _ben(anon)
+    first = login(anon, "ben", code)
     assert first.status_code == 403 and first.json()["setup"] is True
     assert "set-cookie" not in first.headers
-    assert login(anon, "julian", code, "zu-kurz").status_code == 400
-    assert login(anon, "julian", code, code).status_code == 400
-    done = login(anon, "julian", code, "julians-eigenes-passwort")
+    assert login(anon, "ben", code, "zu-kurz").status_code == 400
+    assert login(anon, "ben", code, code).status_code == 400
+    done = login(anon, "ben", code, "bens-eigenes-passwort")
     assert done.status_code == 200 and "__Host-tri_session=" in done.headers["set-cookie"]
     assert anon.get("/api/overview").status_code == 200
     # Startcode verfällt, das neue Passwort gilt und liegt nur gehasht vor.
-    assert login(anon, "julian", code).status_code == 401
-    assert login(anon, "julian", "julians-eigenes-passwort").status_code == 200
+    assert login(anon, "ben", code).status_code == 401
+    assert login(anon, "ben", "bens-eigenes-passwort").status_code == 200
     conn = users.connect()
-    row = conn.execute("SELECT password_hash, setup_hash FROM users WHERE name='julian'").fetchone()
+    row = conn.execute("SELECT password_hash, setup_hash FROM users WHERE name='ben'").fetchone()
     conn.close()
     assert row["setup_hash"] is None
-    assert "julians-eigenes-passwort" not in row["password_hash"]
-    assert auth.verify_password("julians-eigenes-passwort", row["password_hash"])
+    assert "bens-eigenes-passwort" not in row["password_hash"]
+    assert auth.verify_password("bens-eigenes-passwort", row["password_hash"])
 
 
 def test_wrong_start_code_does_not_reveal_setup(anon):
-    _julian(anon)
-    response = login(anon, "julian", "aaaa-bbbb-cccc-dddd", "julians-eigenes-passwort")
+    _ben(anon)
+    response = login(anon, "ben", "aaaa-bbbb-cccc-dddd", "bens-eigenes-passwort")
     assert response.status_code == 401
-    assert login(anon, "julian", "falsch").status_code == 401
+    assert login(anon, "ben", "falsch").status_code == 401
 
 
 def test_expired_start_code_rejected(anon):
-    code = _julian(anon)
+    code = _ben(anon)
     conn = users.connect()
-    conn.execute("UPDATE users SET setup_expires=1 WHERE name='julian'")
+    conn.execute("UPDATE users SET setup_expires=1 WHERE name='ben'")
     conn.commit()
     conn.close()
-    assert login(anon, "julian", code, "julians-eigenes-passwort").status_code == 401
+    assert login(anon, "ben", code, "bens-eigenes-passwort").status_code == 401
 
 
 def test_users_see_only_their_own_data(client):
-    assert client.post("/api/planned", json={"date": "2026-12-01", "sport": "run", "title": "Davids Lauf"}).status_code == 201
-    code = _julian(client)
-    assert login(client, "julian", code, "julians-eigenes-passwort").status_code == 200
+    assert client.post("/api/planned", json={"date": "2026-12-01", "sport": "run", "title": "Annas Lauf"}).status_code == 201
+    code = _ben(client)
+    assert login(client, "ben", code, "bens-eigenes-passwort").status_code == 200
     rows = client.get("/api/calendar", params={"start": "2026-11-30", "end": "2026-12-06"}).json()
-    assert "Davids Lauf" not in str(rows)
-    assert client.get("/api/settings").json()["athlete_name"] == "Julian"
-    assert client.post("/api/planned", json={"date": "2026-12-02", "sport": "bike", "title": "Julians Rad"}).status_code == 201
-    assert (db.ROOT_DIR / "users" / "julian" / "triathlon.db").exists()
-    assert login(client, "david", PASSWORD).status_code == 200
+    assert "Annas Lauf" not in str(rows)
+    assert client.get("/api/settings").json()["athlete_name"] == "Ben"
+    assert client.post("/api/planned", json={"date": "2026-12-02", "sport": "bike", "title": "Bens Rad"}).status_code == 201
+    assert (db.ROOT_DIR / "users" / "ben" / "triathlon.db").exists()
+    assert login(client, "anna", PASSWORD).status_code == 200
     rows = str(client.get("/api/calendar", params={"start": "2026-11-30", "end": "2026-12-06"}).json())
-    assert "Davids Lauf" in rows and "Julians Rad" not in rows
-    assert client.get("/api/settings").json()["athlete_name"] == "David"
+    assert "Annas Lauf" in rows and "Bens Rad" not in rows
+    assert client.get("/api/settings").json()["athlete_name"] == "Anna"
 
 
 def test_reset_logs_out_and_issues_new_code(anon):
-    code = _julian(anon)
-    assert login(anon, "julian", code, "julians-eigenes-passwort").status_code == 200
-    new_code = users.reset("julian")
+    code = _ben(anon)
+    assert login(anon, "ben", code, "bens-eigenes-passwort").status_code == 200
+    new_code = users.reset("ben")
     assert anon.get("/api/overview").status_code == 401
-    assert login(anon, "julian", "julians-eigenes-passwort").status_code == 401
-    assert login(anon, "julian", new_code).status_code == 403
+    assert login(anon, "ben", "bens-eigenes-passwort").status_code == 401
+    assert login(anon, "ben", new_code).status_code == 403
 
 
 def test_bad_usernames_refused(anon):
-    for name in ("", "a", "../david", "Julian", "x" * 40):
+    for name in ("", "a", "../anna", "Ben", "x" * 40):
         try:
             users.add(name, "X")
         except ValueError:
@@ -172,7 +172,7 @@ def test_bad_usernames_refused(anon):
         raise AssertionError(name)
 
 
-def test_migrates_single_password_to_david(anon, tmp_path, monkeypatch):
+def test_migrates_single_password_to_admin(anon, tmp_path, monkeypatch):
     monkeypatch.setattr(db, "ROOT_DIR", tmp_path)
     legacy = db.open_db(tmp_path / "triathlon.db")
     legacy.executescript(db.SCHEMA + "CREATE TABLE sessions (token_hash TEXT PRIMARY KEY, expires_at REAL NOT NULL);")
@@ -181,9 +181,9 @@ def test_migrates_single_password_to_david(anon, tmp_path, monkeypatch):
     legacy.commit()
     legacy.close()
     users.init()
-    david = users.check_login("david", "altes-passwort-123")
-    assert david and david.dir == tmp_path.resolve()
-    assert not david.own_key  # David bleibt beim Abo
+    admin = users.check_login("admin", "altes-passwort-123")
+    assert admin and admin.dir == tmp_path.resolve()
+    assert not admin.own_key  # Der übernommene Benutzer bleibt beim Abo
     conn = users.connect()
-    assert conn.execute("SELECT user FROM sessions WHERE token_hash='abc'").fetchone()["user"] == "david"
+    assert conn.execute("SELECT user FROM sessions WHERE token_hash='abc'").fetchone()["user"] == users.LEGACY_USER == "admin"
     conn.close()
