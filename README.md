@@ -1,7 +1,6 @@
 # Trainings-Dashboard für den Wettkampf
 
 Kalender für geplante Einheiten, Trainings aus Garmin Connect und Auswertungen durch Claude.
-Adresse: https://training.example.org
 
 ## Aufbau
 - `triathlon-web`: Web-App als Benutzer `triathlon`, nur auf 127.0.0.1:8090 erreichbar. nginx terminiert TLS auf Port 443.
