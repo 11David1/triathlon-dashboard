@@ -1,0 +1,26 @@
+[Unit]
+Description=Triathlon-Dashboard (Web)
+After=network.target
+
+[Service]
+User=triathlon
+Group=triathlon
+Environment=TZ=Europe/Berlin
+WorkingDirectory=/opt/triathlon-dashboard
+ExecStart=/opt/triathlon-dashboard/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8090 --no-server-header
+Restart=always
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/opt/triathlon-dashboard/data
+
+[Install]
+WantedBy=multi-user.target

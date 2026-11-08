@@ -1,0 +1,10 @@
+venv/
+data/
+__pycache__/
+.pytest_cache/
+*.db
+*.db-wal
+*.db-shm
+*.key
+whoop.json
+calendar.urls

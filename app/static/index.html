@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Trainings-Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1 id="race-name">Trainings-Dashboard</h1>
+    <p id="sync-status" class="muted"></p>
+  </div>
+  <div class="actions">
+    <button id="btn-sync">Jetzt abgleichen</button>
+    <button id="btn-settings">Einstellungen</button>
+    <button id="btn-logout">Abmelden</button>
+  </div>
+</header>
+
+<div id="banner" class="banner" role="status" hidden></div>
+
+<main>
+  <section class="stats" id="stats" aria-label="Überblick"></section>
+
+  <div class="home">
+  <section class="card calendar-card">
+    <div class="section-head">
+      <h2 id="month-title" class="month-title"></h2>
+      <div class="actions">
+        <button id="prev-month" aria-label="Voriger Monat">‹</button>
+        <button id="this-month">Heute</button>
+        <button id="next-month" aria-label="Nächster Monat">›</button>
+      </div>
+    </div>
+    <div class="calendar" id="calendar"></div>
+    <div class="legend" id="sport-legend"></div>
+  </section>
+
+    <div class="home-side">
+  <section class="card">
+    <div class="section-head">
+      <h2>Wochenumfang</h2>
+      <div class="filters">
+        <div class="segmented" id="weekly-sport" role="group" aria-label="Sportart"></div>
+        <div class="segmented" id="weekly-metric" role="group" aria-label="Messgröße"></div>
+        <div class="segmented" id="weekly-range" role="group" aria-label="Zeitraum"></div>
+      </div>
+    </div>
+    <div class="weekly-hero">
+      <div class="k" id="weekly-label"></div>
+      <div class="value" id="weekly-value"></div>
+      <div class="note" id="weekly-note"></div>
+    </div>
+    <div id="chart-weekly" class="chart"></div>
+    <details class="table-view"><summary>Als Tabelle anzeigen</summary><div id="weekly-table"></div></details>
+  </section>
+
+      <section class="card today-card">
+        <div class="section-head">
+          <h2 id="today-title">Heute</h2>
+          <button id="today-add" type="button">+ Eintragen</button>
+        </div>
+        <div id="today-entries"></div>
+        <div id="today-recovery" class="today-recovery"></div>
+        <button id="today-ask" class="primary today-ask" type="button">Trainer fragen: Was heute?</button>
+      </section>
+
+      <section class="card complaints-card">
+        <div class="section-head">
+          <h2>Beschwerden</h2>
+          <button id="complaint-new" type="button">+ Neue Beschwerde</button>
+        </div>
+        <div id="complaints"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="columns">
+    <section class="card">
+      <div class="section-head"><h2>Letzte Trainings</h2><button id="btn-add-activity" class="primary">+ Training hinzufügen</button></div>
+      <div id="recent"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2 id="week-title">Wochenauswertung</h2>
+        <div class="actions">
+          <button id="prev-week" aria-label="Vorige Woche">‹</button>
+          <button id="next-week" aria-label="Nächste Woche">›</button>
+          <button id="btn-week" class="primary">Woche auswerten</button>
+        </div>
+      </div>
+      <div id="week-analysis" class="analysis"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="section-head"><h2>Aufteilung nach Sportart, letzte 12 Wochen</h2></div>
+    <div id="chart-volume" class="chart"></div>
+    <div class="legend" id="volume-legend"></div>
+    <details class="table-view"><summary>Als Tabelle anzeigen</summary><div id="volume-table"></div></details>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Erholung, letzte 6 Wochen</h2></div>
+    <div class="small-multiples">
+      <div id="chart-recovery-box" hidden><h3>WHOOP Recovery (%)</h3><div id="chart-recovery" class="chart small"></div></div>
+      <div><h3 id="chart-hrv-title">HRV (ms)</h3><div id="chart-hrv" class="chart small"></div></div>
+      <div><h3>Ruhepuls (bpm)</h3><div id="chart-rhr" class="chart small"></div></div>
+      <div><h3>Schlaf (Stunden)</h3><div id="chart-sleep" class="chart small"></div></div>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<button id="trainer-open" class="trainer-fab primary" type="button">Trainer fragen</button>
+
+<aside id="trainer" class="trainer" aria-label="Dein Trainer" hidden>
+  <header class="trainer-head">
+    <div>
+      <h2>Dein Trainer</h2>
+      <p class="muted">Kennt deine Daten und deinen Plan</p>
+    </div>
+    <div class="actions">
+      <button id="trainer-knowledge" type="button">Wissen</button>
+      <button id="trainer-clear" type="button">Neuer Chat</button>
+      <button id="trainer-close" class="close" type="button" aria-label="Schließen">×</button>
+    </div>
+  </header>
+  <div id="chat-log" class="chat-log" role="log" aria-live="polite"></div>
+  <p id="chat-error" class="error chat-error" role="alert" hidden></p>
+  <form id="chat-form" class="chat-form">
+    <label class="sr-only" for="chat-input">Nachricht an deinen Trainer</label>
+    <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Frag deinen Trainer oder lass dir die nächste Woche planen"></textarea>
+    <button id="chat-send" class="primary" type="submit">Senden</button>
+  </form>
+</aside>
+
+<dialog id="day-dialog">
+  <div class="dialog-head"><h2 id="day-title"></h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <div id="day-entries"></div>
+  <button type="button" id="day-add-activity">+ Absolviertes Training eintragen</button>
+  <form id="plan-form">
+    <h3 id="plan-form-title">Training eintragen</h3>
+    <div class="form-grid">
+      <label>Sportart<select id="plan-sport"></select></label>
+      <label>Datum<input id="plan-date" type="date" required></label>
+      <label class="wide">Titel<input id="plan-title" maxlength="120" placeholder="z. B. Lange Radausfahrt"></label>
+      <label>Dauer (Min.)<input id="plan-duration" type="number" min="0" max="1440"></label>
+      <label>Distanz (km)<input id="plan-distance" type="number" min="0" max="1000" step="0.1"></label>
+      <label class="wide">Intensität<input id="plan-intensity" maxlength="60" placeholder="z. B. Zone 2, 4 × 8 Min. Schwelle"></label>
+      <label class="wide">Notizen<textarea id="plan-notes" rows="2" maxlength="2000"></textarea></label>
+    </div>
+    <p id="plan-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="plan-delete" class="danger" hidden>Löschen</button>
+      <button type="button" id="plan-cancel" hidden>Abbrechen</button>
+      <button type="submit" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="activity-dialog">
+  <div class="dialog-head"><h2 id="activity-title"></h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <p id="activity-sub" class="muted"></p>
+  <div id="activity-metrics" class="metrics"></div>
+  <div id="activity-plan"></div>
+  <label class="note-field">Deine Notizen für die Auswertung
+    <textarea id="activity-note" rows="5" maxlength="4000" placeholder="Wie hat es sich angefühlt? Beine, Schlaf, Wetter, Ernährung, Beschwerden, was immer Claude wissen soll."></textarea>
+  </label>
+  <p id="note-state" class="muted"></p>
+  <div class="section-head"><h3>Auswertung</h3><button id="activity-analyze" class="primary">Auswerten</button></div>
+  <div id="activity-analysis" class="analysis"></div>
+  <div id="activity-laps"></div>
+  <div id="activity-manual" class="actions end" hidden>
+    <button type="button" id="activity-delete" class="danger">Löschen</button>
+    <button type="button" id="activity-edit">Bearbeiten</button>
+  </div>
+</dialog>
+
+<dialog id="complaint-dialog">
+  <div class="dialog-head"><h2 id="complaint-title">Neue Beschwerde</h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <form id="complaint-form">
+    <div class="form-grid">
+      <label>Was und wo?<input id="complaint-name" required maxlength="120" placeholder="z. B. Achillessehne links"></label>
+      <label>Seit wann?<input id="complaint-start" type="date" required></label>
+      <label class="wide">Woher kommt es vermutlich?
+        <textarea id="complaint-cause" rows="2" maxlength="2000" placeholder="z. B. Umfang zu schnell gesteigert, neue Schuhe, Tennis"></textarea>
+      </label>
+      <label class="wide complaint-first">Wie ist es gerade?
+        <textarea id="complaint-text" rows="3" maxlength="2000"></textarea>
+      </label>
+    </div>
+    <p id="complaint-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="complaint-delete" class="danger" hidden>Ganz löschen</button>
+      <button type="submit" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="knowledge-dialog">
+  <div class="dialog-head"><h2>Wissen deines Trainers</h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <p class="muted">Übertrage hierher, was in deinem Claude-Projekt steht. Der Trainer nutzt es bei jeder Antwort. Es ist eine Kopie: Änderungen im Claude-Projekt kommen nicht automatisch hier an.</p>
+  <form id="instructions-form">
+    <label>Projektanweisungen
+      <textarea id="knowledge-instructions" rows="7" maxlength="20000" placeholder="Hier die Anweisungen aus deinem Projekt einfügen, zum Beispiel Ziele, Zielzeit, Regeln für den Trainer"></textarea>
+    </label>
+    <p id="instructions-state" class="muted"></p>
+    <div class="actions end"><button type="submit" class="primary">Anweisungen speichern</button></div>
+  </form>
+  <h3 class="knowledge-head">Dateien und Texte</h3>
+  <div id="knowledge-list"></div>
+  <p id="knowledge-warning" class="error" hidden></p>
+  <label class="file-button">Dateien hochladen (PDF, TXT, MD, CSV)
+    <input id="knowledge-files" type="file" multiple accept=".pdf,.txt,.md,.markdown,.csv,.tsv,.json">
+  </label>
+  <form id="knowledge-form">
+    <div class="form-grid">
+      <label class="wide">Titel<input id="knowledge-title" maxlength="120" required placeholder="z. B. Streckeninfos Musterstadt"></label>
+      <label class="wide">Text einfügen<textarea id="knowledge-content" rows="4" required></textarea></label>
+    </div>
+    <div class="actions end"><button type="submit">Text hinzufügen</button></div>
+  </form>
+  <p id="knowledge-error" class="error" role="alert" hidden></p>
+</dialog>
+
+<dialog id="manual-dialog">
+  <div class="dialog-head"><h2 id="manual-title">Training hinzufügen</h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <form id="manual-form">
+    <div class="form-grid">
+      <label>Sportart<select id="manual-sport"></select></label>
+      <label>Titel<input id="manual-name" maxlength="120" placeholder="z. B. Freiwasser"></label>
+      <label>Datum<input id="manual-date" type="date" required></label>
+      <label>Uhrzeit<input id="manual-time" type="time" required></label>
+      <label>Dauer<input id="manual-duration" required inputmode="numeric" placeholder="90 oder 1:30"></label>
+      <label>Distanz (km)<input id="manual-distance" type="number" min="0" max="1000" step="0.01"></label>
+      <label>Ø Puls<input id="manual-hr" type="number" min="30" max="250"></label>
+      <label>Max. Puls<input id="manual-maxhr" type="number" min="30" max="250"></label>
+      <label>Ø Leistung (W)<input id="manual-power" type="number" min="0" max="2500"></label>
+      <label>Höhenmeter<input id="manual-elevation" type="number" min="0" max="20000"></label>
+      <label class="wide">Deine Notizen für die Auswertung
+        <textarea id="manual-note" rows="5" maxlength="4000" placeholder="Wie lief es, wie hat es sich angefühlt? Je mehr du schreibst, desto genauer die Auswertung."></textarea>
+      </label>
+    </div>
+    <p id="manual-hint" class="muted">Nach dem Speichern wertet Claude das Training automatisch aus.</p>
+    <p id="manual-error" class="error" role="alert" hidden></p>
+    <div class="actions end"><button type="submit" class="primary">Speichern</button></div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog">
+  <div class="dialog-head"><h2>Einstellungen</h2><button class="close" data-close aria-label="Schließen">×</button></div>
+  <form id="settings-form">
+    <h3>Rennen</h3>
+    <div class="form-grid">
+      <label>Name<input id="set-race-name" required maxlength="80"></label>
+      <label>Datum<input id="set-race-date" type="date" required></label>
+      <label class="wide">Infos für die Auswertung
+        <textarea id="set-notes" rows="4" maxlength="4000" placeholder="z. B. Zielzeit, FTP, Laufschwelle, Stärken und Schwächen, Verletzungen, verfügbare Stunden pro Woche"></textarea>
+      </label>
+    </div>
+    <div class="actions end"><button type="submit" class="primary">Speichern</button></div>
+  </form>
+  <p id="backup-state" class="muted backup-state"></p>
+  <div id="calendar-terms" class="settings-block" hidden>
+    <h3>Was zählt aus Google als Training?</h3>
+    <p class="muted">Erkannt werden Wörter wie Schwimmen, Rad, Kickr, Lauf, Gym, Kraft, Tennis oder Koppel. Hier korrigierst du das, ein Begriff pro Zeile.</p>
+    <div class="form-grid">
+      <label>Zählt auch als Training<textarea id="terms-training" rows="3" maxlength="2000" placeholder="z. B. Bouldern"></textarea></label>
+      <label>Zählt nicht als Training<textarea id="terms-ignore" rows="3" maxlength="2000" placeholder="z. B. Training Firma"></textarea></label>
+    </div>
+    <p id="terms-state" class="muted"></p>
+    <div class="actions end">
+      <button type="button" id="calendar-unhide" hidden></button>
+      <button type="button" id="terms-save">Begriffe speichern</button>
+    </div>
+  </div>
+  <form id="calendar-form" class="settings-block">
+    <h3>Google Kalender</h3>
+    <p id="calendar-state" class="muted"></p>
+    <label>Geheime Adresse im iCal-Format
+      <textarea id="set-calendar" rows="2" autocomplete="off" spellcheck="false" required placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
+    </label>
+    <p class="muted">In Google Kalender am Computer: Einstellungen, links deinen Kalender wählen, dann „Kalender integrieren“ und „Geheime Adresse im iCal-Format“ kopieren. Bei mehreren Kalendern eine Adresse pro Zeile. Der Zugriff ist nur lesend. Trainings erscheinen im Kalender, alle anderen Termine sieht nur der Trainer, und zwar nur mit Titel und Uhrzeit. Wer die Adresse kennt, kann deinen Kalender lesen, gib sie also nicht weiter.</p>
+    <p id="calendar-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="calendar-remove" class="danger" hidden>Verbindung trennen</button>
+      <button type="submit" class="primary">Prüfen und speichern</button>
+    </div>
+  </form>
+  <form id="whoop-form" class="settings-block">
+    <h3>WHOOP</h3>
+    <p id="whoop-state" class="muted"></p>
+    <details id="whoop-help">
+      <summary>So richtest du den Zugang einmalig ein</summary>
+      <ol class="muted whoop-steps">
+        <li>Melde dich im <a href="https://developer-dashboard.whoop.com" target="_blank" rel="noopener noreferrer">WHOOP Developer Dashboard</a> mit deinem WHOOP-Konto an und lege ein Team und eine App an.</li>
+        <li>Als Redirect URL trägst du genau diese Adresse ein: <code id="whoop-redirect"></code></li>
+        <li>Wähle die Berechtigungen read:recovery, read:cycles und read:sleep.</li>
+        <li>Kopiere Client ID und Client Secret hierher und klicke auf „Mit WHOOP verbinden“. Danach meldest du dich bei WHOOP an und gibst den Zugriff frei.</li>
+      </ol>
+    </details>
+    <div class="form-grid">
+      <label>Client ID<input id="set-whoop-id" autocomplete="off" spellcheck="false" required maxlength="200"></label>
+      <label>Client Secret<input id="set-whoop-secret" type="password" autocomplete="off" maxlength="500"></label>
+    </div>
+    <p class="muted">Der Zugriff ist nur lesend: Recovery, HRV, Ruhepuls, Schlaf und Tagesbelastung. Das Secret wird nie wieder angezeigt.</p>
+    <p id="whoop-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="whoop-remove" class="danger" hidden>Verbindung trennen</button>
+      <button type="submit" class="primary">Mit WHOOP verbinden</button>
+    </div>
+  </form>
+  <form id="key-form">
+    <h3>Garmin-Verbindung</h3>
+    <p id="key-state" class="muted"></p>
+    <div id="key-expiry-box" class="key-expiry">
+      <label>Aktueller Key läuft ab am<input id="set-key-expiry" type="date"></label>
+      <button type="button" id="key-expiry-save">Datum speichern</button>
+      <p id="key-expiry-state" class="muted"></p>
+    </div>
+    <div class="form-grid">
+      <label>Personal API Key<input id="set-key" type="password" autocomplete="off" required></label>
+      <label>Bei Garmin gewählte Laufzeit
+        <select id="set-key-days">
+          <option value="">Weiß ich nicht</option>
+          <option value="30">30 Tage</option>
+          <option value="90">90 Tage</option>
+          <option value="180">180 Tage</option>
+          <option value="365" selected>365 Tage</option>
+        </select>
+      </label>
+    </div>
+    <p class="muted">Den Key erstellst du in Garmin Connect unter <a href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noopener noreferrer">Personal API Key</a>. Er wird vor dem Speichern bei Garmin geprüft und danach nie wieder angezeigt.</p>
+    <p id="key-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="key-remove" class="danger" hidden>Key entfernen</button>
+      <button type="submit" class="primary">Key prüfen und speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

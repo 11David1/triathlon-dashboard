@@ -1,0 +1,19 @@
+[Unit]
+Description=Triathlon-Dashboard: Datenbank sichern
+
+[Service]
+Type=oneshot
+User=triathlon
+Group=triathlon
+Environment=TZ=Europe/Berlin
+UMask=0077
+WorkingDirectory=/opt/triathlon-dashboard
+ExecStart=/opt/triathlon-dashboard/venv/bin/python -m app.backup
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+CapabilityBoundingSet=
+ReadWritePaths=/opt/triathlon-dashboard/data /var/backups/triathlon-dashboard
