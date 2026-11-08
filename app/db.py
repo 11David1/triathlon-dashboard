@@ -1,13 +1,40 @@
-"""SQLite-Zugriff. Web-App und Auswertungs-Dienst teilen sich diese Datei."""
+"""SQLite-Zugriff. Web-App und Auswertungs-Dienst teilen sich diese Datei.
+
+Jeder Benutzer hat einen eigenen Datenordner mit eigener Datenbank. Welcher gilt, steht in einer
+Kontextvariable, die die Anmeldung (bzw. Worker und Abgleich je Benutzer) setzt. Ist keiner
+gesetzt, schlägt jeder Zugriff fehl, statt still in fremden Daten zu landen.
+"""
+import contextvars
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("TRI_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+ROOT_DIR = Path(os.environ.get("TRI_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+_current_dir: contextvars.ContextVar[Path | None] = contextvars.ContextVar("tri_data_dir", default=None)
+
+
+class NoUser(RuntimeError):
+    pass
+
+
+def data_dir() -> Path:
+    path = _current_dir.get()
+    if path is None:
+        raise NoUser("Kein Benutzer gewählt")
+    return path
+
+
+@contextmanager
+def use(path: Path):
+    token = _current_dir.set(Path(path))
+    try:
+        yield
+    finally:
+        _current_dir.reset(token)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, expires_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS planned (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date TEXT NOT NULL,
@@ -110,19 +137,40 @@ WHOOP_COLUMNS = ("whoop_recovery", "whoop_hrv", "whoop_resting_hr", "whoop_spo2"
 
 
 def db_path() -> Path:
-    return DATA_DIR / "triathlon.db"
+    return data_dir() / "triathlon.db"
 
 
-def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path(), timeout=15)
+def open_db(path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=15000")
+    _match_owner(path)
     return conn
 
 
+def _match_owner(path: Path) -> None:
+    """Der Worker läuft als root. Legt er die WAL-Dateien an, müssen sie trotzdem der Web-App gehören."""
+    if os.geteuid() != 0:
+        return
+    try:
+        owner = path.stat()
+    except FileNotFoundError:
+        return
+    for extra in (path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        try:
+            if extra.stat().st_uid != owner.st_uid:
+                os.chown(extra, owner.st_uid, owner.st_gid)
+        except FileNotFoundError:
+            pass
+
+
+def connect() -> sqlite3.Connection:
+    return open_db(db_path())
+
+
 def init() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir().mkdir(parents=True, exist_ok=True)
     conn = connect()
     try:
         conn.executescript(SCHEMA)

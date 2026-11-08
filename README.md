@@ -9,7 +9,19 @@ Adresse: https://training.example.org
 - `data/`: SQLite-Datenbank und Garmin-Key (nur für `triathlon` lesbar).
 
 ## Bedienung
-- Passwort setzen oder ändern (meldet alle Geräte ab): `/opt/triathlon-dashboard/set-password`
+- Anmeldung mit Benutzername und Passwort. Jeder Benutzer hat eigene, getrennte Daten (Plan, Garmin, WHOOP, Kalender, Trainer).
+- Benutzer verwalten (`/opt/triathlon-dashboard/benutzer`):
+  - `benutzer liste`
+  - `benutzer anlegen julian Julian` zeigt einen einmaligen Startcode (7 Tage gültig, nur gehasht gespeichert).
+    Damit meldet sich Julian zum ersten Mal an und muss sofort ein eigenes Passwort setzen (scrypt-Hash).
+  - `benutzer zuruecksetzen julian`: neuer Startcode, altes Passwort ungültig, alle Geräte abgemeldet.
+  - `benutzer passwort david`: Passwort direkt setzen (meldet alle Geräte ab). `set-password` macht dasselbe für david.
+- Claude: Davids Trainer und Auswertungen laufen wie bisher über die Claude-Anmeldung des Servers (sein Abo).
+  Alle anderen Benutzer brauchen einen eigenen Anthropic-API-Key (Einstellungen → Claude, liegt in `data/users/<name>/anthropic.key`,
+  wird nicht mitgesichert). Ihr Aufruf läuft mit leerer Umgebung und eigenem Home-Verzeichnis, sieht die Abo-Anmeldung also nie
+  und nutzt das Modell `claude-opus-5-5`. Ohne Key bleiben ihre Aufträge liegen, bis einer eingetragen ist.
+- Benutzer und Sitzungen liegen in `data/users.db`. Davids Daten bleiben in `data/`, die anderer in `data/users/<name>/`,
+  ihre Sicherungen in `/var/backups/triathlon-dashboard/users/<name>/`.
 - Garmin-Key eintragen: im Dashboard unter Einstellungen. Garmin-Keys laufen je nach Wahl nach 30 bis 365 Tagen ab.
 - Trainings ohne Uhr: In „Letzte Trainings“ über „+ Training hinzufügen“. Sie haben negative IDs und werden vom Garmin-Abgleich nicht angefasst.
 - Beschwerden: Karte auf der Startseite. „Beschwerde ist weg“ behält den Verlauf für Trainer und Auswertung.

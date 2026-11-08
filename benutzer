@@ -1,0 +1,7 @@
+#!/bin/sh
+# Als triathlon ausführen, damit neue Ordner und Datenbanken der Web-App gehören.
+cd /opt/triathlon-dashboard || exit 1
+if [ "$(id -u)" = 0 ]; then
+  exec runuser -u triathlon -- /opt/triathlon-dashboard/venv/bin/python scripts/users.py "$@"
+fi
+exec /opt/triathlon-dashboard/venv/bin/python scripts/users.py "$@"

@@ -39,7 +39,7 @@ class AuthRejected(WhoopError):
 
 
 def config_path():
-    return db.DATA_DIR / "whoop.json"
+    return db.data_dir() / "whoop.json"
 
 
 def read_config() -> dict:

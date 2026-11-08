@@ -34,7 +34,7 @@ class CalendarError(Exception):
 
 
 def urls_path():
-    return db.DATA_DIR / "calendar.urls"
+    return db.data_dir() / "calendar.urls"
 
 
 def read_urls() -> list[str]:

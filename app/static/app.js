@@ -92,45 +92,11 @@ function activityLabel(a) {
 }
 
 // --- Überblick -------------------------------------------------------------
-function stat(label, value, note, sport, ratio) {
-  const head = el("div", { class: "label" }, sport ? el("span", { class: `swatch sport-${sport}` }) : null, label);
-  const valueNode = el("div", { class: "value" });
-  valueNode.append(...value);
-  const box = el("div", { class: "stat" }, head, valueNode, note ? el("div", { class: "note", textContent: note }) : null);
-  if (ratio !== undefined) {
-    const fill = el("span", { class: `sport-${sport}` });
-    fill.style.width = `${Math.min(100, Math.round(ratio * 100))}%`;
-    fill.style.background = "var(--c)";
-    box.append(el("div", { class: "meter" }, fill));
-  }
-  return box;
-}
-
 // WHOOP-Zonen: grün ab 67 %, gelb ab 34 %, darunter rot.
 function recoveryZone(value) {
   if (value >= 67) return ["good", "gut erholt"];
   if (value >= 34) return ["medium", "mittel erholt"];
   return ["low", "wenig erholt"];
-}
-
-function recoveryStat(r) {
-  if (!r || r.source !== "whoop") return null;
-  const entry = r.recovery;
-  if (entry.value === null) return stat("WHOOP Recovery", [el("small", { textContent: "noch kein Wert" })], "Kommt nach dem Aufwachen");
-  const [zone, word] = recoveryZone(entry.value);
-  const label = entry.date === state.today ? "Recovery heute" : `Recovery vom ${deShort(entry.date)}`;
-  const parts = [];
-  if (r.hrv.value !== null) parts.push(`HRV ${num(r.hrv.value)} ms`);
-  if (r.resting_hr.value !== null) parts.push(`Ruhepuls ${num(r.resting_hr.value)}`);
-  if (r.sleep_s.value !== null) parts.push(`Schlaf ${hours(r.sleep_s.value)}`);
-  const value = [el("span", { class: `recovery-${zone}`, textContent: `${num(entry.value)} %` }), el("small", { textContent: ` ${word}` })];
-  const box = stat(label, value, parts.join(" · "));
-  if (entry.average !== null) box.title = `Schnitt der 4 Wochen davor: ${num(entry.average)} %`;
-  const fill = el("span", { class: `recovery-${zone}` });
-  fill.style.width = `${Math.max(2, Math.min(100, entry.value))}%`;
-  fill.style.background = "currentColor";
-  box.append(el("div", { class: "meter" }, fill));
-  return box;
 }
 
 function renderAlerts(alerts) {
@@ -158,9 +124,12 @@ function renderGreeting() {
   const name = (o.athlete_name || "").trim();
   $("greeting").textContent = word === "Noch wach" ? `Noch wach${name ? `, ${name}` : ""}?` : `${word}${name ? `, ${name}` : ""}`;
   const date = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  $("greeting-sub").textContent = date;
   const days = o.race.days_left;
-  const race = days > 0 ? `noch ${num(days)} Tage bis ${o.race.name}` : days === 0 ? `heute ist ${o.race.name}` : o.race.name;
-  $("greeting-sub").textContent = `${date} · ${race}`;
+  const chip = $("race-chip");
+  chip.hidden = days < 0;
+  chip.title = `${o.race.name}, ${de(o.race.date)}`;
+  chip.replaceChildren(...(days > 0 ? [el("b", { textContent: num(days) }), ` ${days === 1 ? "Tag" : "Tage"} bis ${o.race.name}`] : [el("b", { textContent: "Heute" }), ` ist ${o.race.name}`]));
 }
 
 function sinceText(seconds) {
@@ -202,16 +171,39 @@ function renderOverview(o) {
   renderSyncPill();
   renderAlerts(o.alerts);
 
-  const weeks = Math.floor(o.race.days_left / 7);
-  const stats = [stat("Bis zum Rennen", [`${num(o.race.days_left)} `, el("small", { textContent: "Tage" })], `${de(o.race.date)} · ${weeks} Wochen`)];
-  const recovery = recoveryStat(o.recovery);
-  if (recovery) stats.push(recovery);
-  for (const sport of ["swim", "bike", "run"]) {
-    const s = o.sports[sport];
-    const note = s.planned_min ? `von ${hours(s.planned_min * 60)} geplant` : "nichts geplant";
-    stats.push(stat(`${SPORT_NAMES[sport]} diese Woche`, [hours(s.done_min * 60)], note, sport, s.planned_min ? s.done_min / s.planned_min : 0));
+  renderWeekProgress(o);
+}
+
+// Eine Karte für die laufende Woche: Gesamtstunden und je Sportart erledigt gegen geplant.
+function renderWeekProgress(o) {
+  const start = parse(o.week_start);
+  $("week-range").textContent = `${deShort(o.week_start)} bis ${deShort(iso(addDays(start, 6)))}`;
+  const sports = STACK.filter((s) => o.sports[s] && (o.sports[s].planned_min || o.sports[s].done_min));
+  const done = sports.reduce((sum, s) => sum + o.sports[s].done_min, 0);
+  const planned = sports.reduce((sum, s) => sum + o.sports[s].planned_min, 0);
+  if (!sports.length) {
+    $("week-progress").replaceChildren(el("p", { class: "empty", textContent: "Für diese Woche ist noch nichts geplant oder trainiert." }));
+    return;
   }
-  $("stats").replaceChildren(...stats);
+  const ratio = planned ? Math.min(1, done / planned) : 1;
+  const meter = el("div", { class: "meter big", role: "img", ariaLabel: planned ? `${Math.round(done / planned * 100)} Prozent des Wochenplans erledigt` : "Kein Plan" }, el("span"));
+  meter.firstChild.style.width = `${Math.round(ratio * 100)}%`;
+  meter.firstChild.style.background = "var(--accent)";
+  const rows = sports.map((sport) => {
+    const s = o.sports[sport];
+    const bar = el("span", { class: "bar", role: "img", ariaLabel: `${SPORT_NAMES[sport]}: ${hours(s.done_min * 60)}${s.planned_min ? ` von ${hours(s.planned_min * 60)}` : ""}` }, el("i", { class: `sport-${sport}` }));
+    bar.firstChild.style.width = `${s.planned_min ? Math.min(100, Math.round(s.done_min / s.planned_min * 100)) : 100}%`;
+    return el("div", { class: "sport-row" },
+      el("span", { class: "sport-name" }, el("i", { class: `swatch sport-${sport}` }), SPORT_NAMES[sport]),
+      bar,
+      el("span", { class: "val", textContent: s.planned_min ? `${hours(s.done_min * 60)} / ${hours(s.planned_min * 60)}` : hours(s.done_min * 60) }));
+  });
+  const open = Math.max(0, planned - done);
+  $("week-progress").replaceChildren(
+    el("div", { class: "week-total" }, el("span", { class: "v", textContent: hours(done * 60) }),
+      el("span", { class: "muted-inline", textContent: planned ? `von ${hours(planned * 60)} geplant` : "trainiert" })),
+    meter, ...rows,
+    open ? el("p", { class: "week-open", textContent: `Noch ${hours(open * 60)} geplant.` }) : null);
 }
 
 // --- Kalender --------------------------------------------------------------
@@ -598,6 +590,7 @@ async function uploadKnowledge(event) {
 
 // --- Beschwerden ---------------------------------------------------------------
 const complaintDrafts = {};
+const openComplaints = new Set();
 let complaintEditing = null;
 
 function daysSince(date) {
@@ -645,8 +638,22 @@ async function loadComplaints() {
   const rows = await api("/api/complaints");
   const active = rows.filter((c) => !c.resolved_on);
   const past = rows.filter((c) => c.resolved_on);
-  const nodes = active.map(activeComplaint);
-  if (!active.length) nodes.push(el("p", { class: "empty complaints-empty", textContent: "Gerade keine Beschwerden. Dein Trainer berücksichtigt alles, was du hier einträgst." }));
+  // Aktive Beschwerden stehen als Hinweis bei "Heute", aufklappbar zum Eintragen.
+  $("today-complaints").replaceChildren(...active.map((c) => {
+    const last = c.entries.find((e) => e.severity !== null);
+    const days = daysSince(c.started_on);
+    const facts = shortFacts([last ? `${last.severity}/10` : null, days > 0 ? `seit ${days} ${days === 1 ? "Tag" : "Tagen"}` : "seit heute"]);
+    const box = el("details", { class: "complaint-hint" },
+      el("summary", {}, el("span", { class: "warn-icon", ariaHidden: "true", textContent: "!" }), el("b", { textContent: c.name }), el("span", { textContent: ` · ${facts}` }),
+        el("span", { class: "open-label", textContent: "Eintragen" })),
+      activeComplaint(c));
+    if (openComplaints.has(c.id)) box.open = true;
+    box.addEventListener("toggle", () => { if (box.open) openComplaints.add(c.id); else openComplaints.delete(c.id); });
+    return box;
+  }));
+  const nodes = active.map((c) => el("p", { class: "complaint-active" }, el("b", { textContent: c.name }),
+    el("span", { class: "muted-inline", textContent: ` · aktiv seit ${de(c.started_on)}, Einträge unter Übersicht → Heute` })));
+  if (!active.length) nodes.push(el("p", { class: "empty complaints-empty", textContent: "Gerade keine Beschwerden. Neue meldest du in der Übersicht unter „Heute“. Dein Trainer berücksichtigt alles, was du einträgst." }));
   if (past.length) nodes.push(el("details", { class: "past-list" }, el("summary", { textContent: `Frühere Beschwerden (${past.length})` }), ...past.map(pastComplaint)));
   $("complaints").replaceChildren(...nodes);
 }
@@ -731,6 +738,27 @@ function recoveryTile(label, entry, format) {
   return box;
 }
 
+function recoveryRing(entry) {
+  const box = el("div", { class: "recovery-ring" });
+  const svg = svgEl("svg", { viewBox: "0 0 64 64", role: "img" });
+  svgEl("circle", { cx: 32, cy: 32, r: 27, class: "ring-track" }, svg);
+  if (entry.value === null) {
+    svg.setAttribute("aria-label", "WHOOP Recovery: noch kein Wert");
+    svgEl("text", { x: 32, y: 36, "text-anchor": "middle", class: "ring-none" }, svg).textContent = "–";
+  } else {
+    const [zone, word] = recoveryZone(entry.value);
+    const length = 2 * Math.PI * 27;
+    const arc = svgEl("circle", { cx: 32, cy: 32, r: 27, class: `ring-value recovery-${zone}`, transform: "rotate(-90 32 32)",
+      "stroke-dasharray": `${(Math.max(2, Math.min(100, entry.value)) / 100 * length).toFixed(1)} ${length.toFixed(1)}` }, svg);
+    arc.style.stroke = "currentColor";
+    svgEl("text", { x: 32, y: 37, "text-anchor": "middle", class: "ring-text" }, svg).textContent = `${num(entry.value)}%`;
+    svg.setAttribute("aria-label", `WHOOP Recovery ${num(entry.value)} Prozent, ${word}`);
+    box.title = `${word}${entry.average !== null ? `, Schnitt der 4 Wochen davor: ${num(entry.average)} %` : ""}${entry.date !== state.today ? `, Wert vom ${deShort(entry.date)}` : ""}`;
+  }
+  box.append(svg, el("span", { class: "k", textContent: "Recovery" }));
+  return box;
+}
+
 async function loadToday() {
   const t = await api("/api/today");
   $("today-title").textContent = `Heute, ${dayName(t.date)} ${deShort(t.date)}`;
@@ -748,9 +776,9 @@ async function loadToday() {
     recoveryTile("Schlaf", r.sleep_s, (v) => hours(v)),
     recoveryTile("HRV", r.hrv, (v) => `${num(v)} ms`),
     recoveryTile("Ruhepuls", r.resting_hr, (v) => `${num(v)} bpm`)];
-  if (r.source === "whoop") tiles.unshift(recoveryTile("WHOOP Recovery", r.recovery, (v) => `${num(v)} %`));
-  $("today-recovery").classList.toggle("four", tiles.length === 4);
-  $("today-recovery").replaceChildren(...tiles);
+  const ring = r.source === "whoop" ? recoveryRing(r.recovery) : null;
+  $("today-recovery").classList.toggle("with-ring", Boolean(ring));
+  $("today-recovery").replaceChildren(...(ring ? [ring] : []), ...tiles);
 }
 
 async function askToday() {
@@ -866,19 +894,78 @@ async function deletePlan() {
 }
 
 async function refreshPlanViews() {
-  await Promise.all([loadCalendar(), loadOverview(), loadToday()]);
+  await Promise.all([loadCalendar(), loadOverview(), loadToday(), loadStrip()]);
+}
+
+// --- Woche im Blick -------------------------------------------------------
+async function loadStrip() {
+  const start = parse(state.stripWeek);
+  const end = addDays(start, 6);
+  const data = await api(`/api/calendar?start=${iso(start)}&end=${iso(end)}`);
+  const current = state.stripWeek === state.currentWeek;
+  $("strip-title").textContent = current ? "Woche im Blick" : `Woche ${deShort(iso(start))} bis ${deShort(iso(end))}`;
+  $("strip-today").disabled = current;
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const key = iso(addDays(start, i));
+    const classes = ["strip-day"];
+    if (key === state.today) classes.push("today");
+    if (key < state.today) classes.push("past");
+    const cell = el("div", { class: classes.join(" "), on: { click: () => openDay(key) } },
+      el("div", { class: "strip-head" }, el("span", { textContent: DOW[i] }), el("span", { class: "d", textContent: deShort(key) })));
+    makeDropTarget(cell, key);
+    const items = [];
+    for (const plan of data.planned.filter((p) => p.date === key && p.status !== "done")) {
+      const chip = chipFor(plan, "plan");
+      if (!plan.google_uid) makeDraggable(chip, plan);
+      items.push(chip);
+    }
+    for (const activity of data.activities.filter((a) => a.date === key)) items.push(chipFor(activity, "activity"));
+    cell.append(...(items.length ? items : [el("span", { class: "strip-empty", textContent: key < state.today ? "frei" : "" })]));
+    days.push(cell);
+  }
+  $("week-strip").replaceChildren(...days);
+}
+
+function shiftStrip(weeks) {
+  state.stripWeek = weeks === 0 ? state.currentWeek : iso(addDays(parse(state.stripWeek), 7 * weeks));
+  loadStrip().catch((e) => showBanner(e.message));
 }
 
 // --- Letzte Trainings ------------------------------------------------------
 const ANALYSIS_STATE = { done: "ausgewertet", pending: "wird ausgewertet", running: "wird ausgewertet", failed: "fehlgeschlagen" };
 
+const RECENT_PAGE = 20;
+const recentState = { rows: [] };
+
 async function loadRecent() {
-  const rows = await api("/api/activities?limit=8");
+  const count = Math.max(RECENT_PAGE, recentState.rows.length);
+  const rows = await api(`/api/activities?limit=${count}`);
+  recentState.rows = rows;
+  renderRecent(rows.length === count);
+  return rows;
+}
+
+async function loadMoreRecent() {
+  const more = await api(`/api/activities?limit=${RECENT_PAGE}&offset=${recentState.rows.length}`);
+  recentState.rows = recentState.rows.concat(more);
+  renderRecent(more.length === RECENT_PAGE);
+}
+
+function renderRecent(hasMore) {
+  const rows = recentState.rows;
+  $("recent-more").hidden = !hasMore;
   if (!rows.length) {
-    $("recent").replaceChildren(el("p", { class: "empty", textContent: "Noch keine Trainings. Sie erscheinen hier nach dem ersten Garmin-Abgleich." }));
-    return rows;
+    const empty = () => el("p", { class: "empty", textContent: "Noch keine Trainings. Sie erscheinen hier nach dem ersten Garmin-Abgleich." });
+    $("recent").replaceChildren(empty());
+    $("recent-short").replaceChildren(empty());
+    return;
   }
-  $("recent").replaceChildren(...rows.map((a) => {
+  $("recent-short").replaceChildren(...rows.slice(0, 4).map(recentRow));
+  $("recent").replaceChildren(...rows.map(recentRow));
+}
+
+function recentRow(a) {
     const speed = pace(a.sport, a.avg_speed);
     const facts = [`${dayName(a.date)} ${deShort(a.date)}`, hours(a.duration_s), distance(a.sport, a.distance_m), speed && speed.v, a.avg_hr ? `${num(a.avg_hr)} bpm` : null].filter(Boolean).join(" · ");
     return el("button", { class: "recent-row", type: "button", on: { click: () => (a.calendar_only ? openDay(a.date) : openActivity(a.id)) } },
@@ -886,8 +973,6 @@ async function loadRecent() {
       el("span", { class: "name", textContent: activityLabel(a) }),
       el("span", { class: "state", textContent: a.calendar_only ? "laut Kalender" : ANALYSIS_STATE[a.analysis_status] || "" }),
       el("span", { class: "meta", textContent: facts }));
-  }));
-  return rows;
 }
 
 // --- Auswertung darstellen ------------------------------------------------
@@ -1164,13 +1249,12 @@ function roundedTop(x, y, w, h, r) {
   return `M${x},${y + h}V${y + radius}Q${x},${y} ${x + radius},${y}H${x + w - radius}Q${x + w},${y} ${x + w},${y + radius}V${y + h}Z`;
 }
 
-function volumeChart(weeks) {
-  const container = $("chart-volume");
-  $("volume-legend").replaceChildren(...STACK.map((s) => el("span", {}, el("i", { class: `swatch sport-${s}` }), SPORT_NAMES[s])));
+function volumeChart(weeks, container, legend, table) {
+  legend.replaceChildren(...STACK.map((s) => el("span", {}, el("i", { class: `swatch sport-${s}` }), SPORT_NAMES[s])));
   const total = (w) => STACK.reduce((sum, s) => sum + w[s], 0);
   if (!weeks.some((w) => total(w) > 0)) {
     emptyChart(container, "Sobald Trainings da sind, siehst du hier den Umfang pro Woche.");
-    $("volume-table").replaceChildren();
+    table.replaceChildren();
     return;
   }
   const W = Math.max(container.clientWidth, 280);
@@ -1185,8 +1269,8 @@ function volumeChart(weeks) {
     svgEl("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = `${num(v, v % 1 ? 1 : 0)} h`;
   }
   const slot = (W - m.l - m.r) / weeks.length;
-  const barWidth = Math.min(24, slot - 4);
-  const labelEvery = slot < 42 ? 2 : 1;
+  const barWidth = Math.max(2, Math.min(24, slot - (slot > 10 ? 4 : 1)));
+  const labelEvery = Math.max(1, Math.ceil(48 / slot));
   weeks.forEach((week, i) => {
     const x = m.l + slot * i + (slot - barWidth) / 2;
     let stacked = 0;
@@ -1216,8 +1300,8 @@ function volumeChart(weeks) {
   });
   container.replaceChildren(svg);
   const head = el("tr", {}, el("th", { textContent: "Woche ab" }), ...STACK.map((s) => el("th", { textContent: SPORT_NAMES[s] })), el("th", { textContent: "Gesamt" }));
-  const rows = weeks.map((w) => el("tr", {}, el("td", { textContent: de(w.week) }), ...STACK.map((s) => el("td", { textContent: hours(w[s] * 3600) })), el("td", { textContent: hours(total(w) * 3600) })));
-  $("volume-table").replaceChildren(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows))));
+  const rows = [...weeks].reverse().map((w) => el("tr", {}, el("td", { textContent: de(w.week) }), ...STACK.map((s) => el("td", { textContent: hours(w[s] * 3600) })), el("td", { textContent: hours(total(w) * 3600) })));
+  table.replaceChildren(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows))));
 }
 
 function lineChart(container, points, format) {
@@ -1311,6 +1395,12 @@ function weeklyChart() {
   const selected = weeks.find((w) => w.week === weekly.pinned) || weeks[weeks.length - 1];
   weeklyHero(weeks, selected);
   const color = weekly.sport === "all" ? "var(--text)" : `var(--${weekly.sport})`;
+  const stacked = weekly.sport === "all" && weekly.metric === "time";
+  $("weekly-legend").hidden = !stacked;
+  if (stacked) {
+    volumeChart(weeks, container, $("weekly-legend"), $("weekly-table"));
+    return;
+  }
   if (!values.some((v) => v > 0)) {
     emptyChart(container, "Für diese Auswahl gibt es im Zeitraum keine Werte.");
     $("weekly-table").replaceChildren();
@@ -1394,9 +1484,9 @@ function segmented(id, options, key) {
 
 let trendData = null;
 function renderTrends() {
-  if (!trendData) return;
+  // Versteckt hätten die Diagramme keine Größe. Gezeichnet wird beim Öffnen des Reiters.
+  if (!trendData || $("p-trends").hidden) return;
   weeklyChart();
-  volumeChart(trendData.weeks.slice(-12));
   const pick = (field, scale = 1) => trendData.wellness.filter((d) => d[field] !== null).map((d) => ({ date: d.date, v: d[field] / scale }));
   // Mit WHOOP-Daten zeigen alle Kurven WHOOP, denn Garmin- und WHOOP-HRV sind nicht vergleichbar.
   const w = trendData.wellness.some((d) => d.whoop_recovery !== null) ? "whoop_" : "";
@@ -1490,6 +1580,42 @@ async function removeWhoop() {
   await loadOverview();
 }
 
+function renderClaudeState(s) {
+  $("claude-form").hidden = !s.claude_own_key;
+  $("set-claude-key").value = "";
+  $("claude-error").hidden = true;
+  $("claude-remove").hidden = !s.claude_key;
+  $("claude-help").open = !s.claude_key;
+  $("claude-state").textContent = s.claude_key
+    ? `Hinterlegt: ${s.claude_key}. Trage nur dann einen neuen ein, wenn du ihn ersetzen willst.`
+    : "Noch kein Key hinterlegt. Ohne Key bleiben Trainer und Auswertungen aus, alles andere funktioniert.";
+}
+
+async function saveClaudeKey(event) {
+  event.preventDefault();
+  const error = $("claude-error");
+  error.hidden = true;
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await api("/api/settings/claude-key", { method: "POST", body: { key: $("set-claude-key").value.trim() } });
+    await openSettings();
+    await loadOverview();
+  } catch (problem) {
+    error.textContent = problem.message;
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function removeClaudeKey() {
+  if (!confirm("API-Key entfernen? Trainer und Auswertungen laufen dann nicht mehr.")) return;
+  await api("/api/settings/claude-key", { method: "DELETE" });
+  await openSettings();
+  await loadOverview();
+}
+
 async function openSettings() {
   const s = await api("/api/settings");
   $("set-race-name").value = s.race_name;
@@ -1514,6 +1640,7 @@ async function openSettings() {
   $("calendar-remove").hidden = !s.calendar_count;
   renderCalendarState(s);
   renderWhoopState(s);
+  renderClaudeState(s);
   $("key-remove").hidden = !s.garmin_key_set;
   $("key-expiry-box").hidden = !s.garmin_key_set;
   $("set-key-expiry").value = s.garmin_key_expires || "";
@@ -1565,6 +1692,40 @@ async function removeKey() {
   await loadOverview();
 }
 
+// --- Reiter -------------------------------------------------------------------
+// Der Reiter steht im Hash (#kalender, #verlauf, #trainings), damit Neuladen und Zurück funktionieren.
+function tabs() {
+  return [...document.querySelectorAll('.tabs [role="tab"]')];
+}
+
+function selectTab(id, { push = true } = {}) {
+  const target = tabs().find((t) => t.id === id) || tabs()[0];
+  for (const tab of tabs()) {
+    const on = tab === target;
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(tab.getAttribute("aria-controls")).hidden = !on;
+  }
+  hideTooltip();
+  if (push) {
+    const hash = target.dataset.hash;
+    history.replaceState(null, "", hash ? `#${hash}` : location.pathname);
+  }
+  // Diagramme brauchen die echte Breite, die erst im sichtbaren Reiter feststeht.
+  if (target.id === "tab-trends") renderTrends();
+}
+
+function tabFromHash() {
+  const hash = location.hash.slice(1);
+  return (tabs().find((t) => t.dataset.hash === hash && hash) || tabs()[0]).id;
+}
+
+function updateWeekMore() {
+  const box = $("week-analysis");
+  const clamped = box.classList.contains("clamped");
+  $("week-more").hidden = !clamped || box.scrollHeight <= box.clientHeight + 4;
+}
+
 // --- Ablauf ----------------------------------------------------------------
 async function loadOverview() {
   renderOverview(await api("/api/overview"));
@@ -1572,7 +1733,7 @@ async function loadOverview() {
 
 async function refreshAll() {
   await loadOverview();
-  await Promise.all([loadCalendar(), loadRecent(), loadTrends(), loadToday()]);
+  await Promise.all([loadCalendar(), loadRecent(), loadTrends(), loadToday(), loadStrip()]);
 }
 
 async function loadTrends() {
@@ -1588,6 +1749,8 @@ function shiftMonth(delta) {
 function wire() {
   $("calendar-form").addEventListener("submit", saveCalendar);
   $("whoop-form").addEventListener("submit", connectWhoop);
+  $("claude-form").addEventListener("submit", saveClaudeKey);
+  $("claude-remove").addEventListener("click", removeClaudeKey);
   $("whoop-remove").addEventListener("click", removeWhoop);
   $("terms-save").addEventListener("click", async () => {
     try {
@@ -1617,6 +1780,22 @@ function wire() {
     }
   });
   $("today-add").addEventListener("click", () => openDay(state.today));
+  for (const tab of tabs()) tab.addEventListener("click", () => selectTab(tab.id));
+  $("p-home").closest("main").querySelector(".tabs").addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const list = tabs();
+    const next = list[(list.findIndex((t) => t.getAttribute("aria-selected") === "true") + (event.key === "ArrowRight" ? 1 : list.length - 1)) % list.length];
+    selectTab(next.id);
+    next.focus();
+  });
+  addEventListener("hashchange", () => selectTab(tabFromHash(), { push: false }));
+  document.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.goto)));
+  $("strip-prev").addEventListener("click", () => shiftStrip(-1));
+  $("strip-next").addEventListener("click", () => shiftStrip(1));
+  $("strip-today").addEventListener("click", () => shiftStrip(0));
+  $("recent-more").addEventListener("click", () => loadMoreRecent().catch((e) => showBanner(e.message)));
+  $("week-more").addEventListener("click", () => { $("week-analysis").classList.remove("clamped"); updateWeekMore(); });
+  new MutationObserver(updateWeekMore).observe($("week-analysis"), { childList: true, subtree: true });
   $("today-ask").addEventListener("click", askToday);
   $("trainer-knowledge").addEventListener("click", () => openKnowledge().catch((error) => { $("chat-error").textContent = error.message; $("chat-error").hidden = false; }));
   $("knowledge-files").addEventListener("change", uploadKnowledge);
@@ -1684,8 +1863,8 @@ function wire() {
   $("plan-cancel").addEventListener("click", () => resetPlanForm(state.dayDate));
   $("activity-analyze").addEventListener("click", analyzeActivity);
   $("btn-week").addEventListener("click", analyzeWeek);
-  $("prev-week").addEventListener("click", () => { state.weekStart = iso(addDays(parse(state.weekStart), -7)); loadWeek(); });
-  $("next-week").addEventListener("click", () => { state.weekStart = iso(addDays(parse(state.weekStart), 7)); loadWeek(); });
+  $("prev-week").addEventListener("click", () => { state.weekStart = iso(addDays(parse(state.weekStart), -7)); $("week-analysis").classList.add("clamped"); loadWeek(); });
+  $("next-week").addEventListener("click", () => { state.weekStart = iso(addDays(parse(state.weekStart), 7)); $("week-analysis").classList.add("clamped"); loadWeek(); });
   $("btn-settings").addEventListener("click", openSettings);
   $("settings-form").addEventListener("submit", saveSettings);
   $("key-form").addEventListener("submit", saveKey);
@@ -1727,12 +1906,14 @@ function wire() {
 
 async function start() {
   wire();
+  selectTab(tabFromHash(), { push: false });
   renderSportLegend();
   await loadOverview();
   const today = parse(state.today);
   state.month = new Date(today.getFullYear(), today.getMonth(), 1);
   state.weekStart = state.currentWeek;
-  await Promise.all([loadCalendar(), loadRecent(), loadTrends(), loadWeek(), loadToday(), loadKnowledge(), loadComplaints()]);
+  state.stripWeek = state.currentWeek;
+  await Promise.all([loadCalendar(), loadRecent(), loadTrends(), loadWeek(), loadToday(), loadKnowledge(), loadComplaints(), loadStrip()]);
   setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) refreshAll().catch(() => {}); }, 300000);
 }
 

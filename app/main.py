@@ -1,5 +1,6 @@
 """Web-App. Alles ist gesperrt, außer dem, was ausdrücklich für den Login nötig ist."""
 import asyncio
+import contextvars
 import datetime as dt
 import io
 import json
@@ -17,11 +18,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
-from . import auth, backup, coach, db, garmin, gcal, health, trainer, whoop
+from . import anthropic_key, auth, backup, coach, db, garmin, gcal, health, trainer, users, whoop
 from .plan import SPORTS, match, monday
 
 ACTIVITY_SPORTS = ("swim", "bike", "run", "strength", "other")
-DEFAULT_NAME = "David"
 
 log = logging.getLogger("app")
 STATIC = Path(__file__).parent / "static"
@@ -33,32 +33,48 @@ WHOOP_CALLBACK = "/api/whoop/callback"
 # Geschützt ist er stattdessen durch den einmaligen state, den nur eine angemeldete Sitzung erzeugen kann.
 PUBLIC = {"/login", "/api/login", "/static/style.css", "/static/login.js", "/healthz", WHOOP_CALLBACK}
 throttle = auth.Throttle()
-sync_lock = threading.Lock()
+current_user: contextvars.ContextVar[users.User | None] = contextvars.ContextVar("tri_user", default=None)
+_sync_locks: dict[Path, threading.Lock] = {}
+_sync_locks_guard = threading.Lock()
 
 
 def run_sync_guarded() -> dict | None:
-    if not sync_lock.acquire(blocking=False):
+    """Abgleich für den Benutzer, dessen Datenordner gerade gilt. Je Benutzer läuft höchstens einer."""
+    with _sync_locks_guard:
+        lock = _sync_locks.setdefault(db.data_dir(), threading.Lock())
+    if not lock.acquire(blocking=False):
         return None
     try:
         gcal.refresh(app.state.calendar_transport)
         whoop.run_sync(app.state.whoop_transport)
         return garmin.run_sync(app.state.garmin_transport)
     finally:
-        sync_lock.release()
+        lock.release()
+
+
+def sync_in_background() -> None:
+    # Threads erben die Kontextvariablen nicht von selbst, ohne Kopie wüsste der Abgleich nicht, für wen.
+    threading.Thread(target=contextvars.copy_context().run, args=(run_sync_guarded,), daemon=True).start()
+
+
+def sync_all_users() -> None:
+    for user in users.all_users():
+        try:
+            with db.use(user.dir):
+                run_sync_guarded()
+        except Exception:
+            log.exception("Automatischer Abgleich für %s fehlgeschlagen", user.name)
 
 
 async def _sync_loop():
     while True:
         await asyncio.sleep(SYNC_INTERVAL_S)
-        try:
-            await asyncio.to_thread(run_sync_guarded)
-        except Exception:
-            log.exception("Automatischer Abgleich fehlgeschlagen")
+        await asyncio.to_thread(sync_all_users)
 
 
 @asynccontextmanager
 async def lifespan(_):
-    db.init()
+    users.init()
     task = asyncio.create_task(_sync_loop()) if SYNC_INTERVAL_S > 0 else None
     yield
     if task:
@@ -82,17 +98,19 @@ async def guard(request: Request, call_next):
     origin = request.headers.get("origin")
     if request.method not in ("GET", "HEAD") and origin and origin != ORIGIN:
         return JSONResponse({"detail": "Ungültige Herkunft"}, status_code=403)
-    if path not in PUBLIC:
-        conn = db.connect()
-        try:
-            ok = auth.session_valid(conn, request.cookies.get(COOKIE))
-        finally:
-            conn.close()
-        if not ok:
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Nicht angemeldet"}, status_code=401)
-            return RedirectResponse("/login", status_code=303)
-    response: Response = await call_next(request)
+    user = None if path in PUBLIC else await asyncio.to_thread(users.session_user, request.cookies.get(COOKIE))
+    if path not in PUBLIC and user is None:
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "Nicht angemeldet"}, status_code=401)
+        return RedirectResponse("/login", status_code=303)
+    # Ab hier sieht jede Anfrage nur den Datenordner ihres Benutzers.
+    user_token = current_user.set(user)
+    dir_token = db._current_dir.set(user.dir if user else None)
+    try:
+        response: Response = await call_next(request)
+    finally:
+        db._current_dir.reset(dir_token)
+        current_user.reset(user_token)
     response.headers["Content-Security-Policy"] = (
         "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
         "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
@@ -114,7 +132,9 @@ class Db:
 # --- Login ---------------------------------------------------------------
 
 class LoginIn(BaseModel):
+    username: str = Field(max_length=40)
     password: str = Field(max_length=500)
+    new_password: str | None = Field(default=None, max_length=500)
 
 
 @app.get("/login")
@@ -132,13 +152,19 @@ def login(body: LoginIn, request: Request):
     ip = _client_ip(request)
     if throttle.blocked(ip):
         raise HTTPException(429, "Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.")
-    with Db() as conn:
-        stored = db.get_setting(conn, "password_hash")
-        if not auth.verify_password(body.password, stored):
-            throttle.fail(ip)
-            log.warning("Fehlgeschlagener Login von %s", ip)
-            raise HTTPException(401, "Falsches Passwort.")
-        token = auth.create_session(conn)
+    try:
+        user = users.check_login(body.username, body.password, body.new_password)
+    except users.SetupRequired:
+        return JSONResponse({"detail": "Bitte jetzt ein eigenes Passwort festlegen.", "setup": True,
+                             "min_length": users.MIN_PASSWORD}, status_code=403)
+    except users.BadPassword as exc:
+        return JSONResponse({"detail": str(exc), "setup": True, "min_length": users.MIN_PASSWORD}, status_code=400)
+    if user is None:
+        throttle.fail(ip)
+        log.warning("Fehlgeschlagener Login von %s", ip)
+        raise HTTPException(401, "Benutzername oder Passwort falsch.")
+    token = users.create_session(user)
+    log.info("Login %s von %s", user.name, ip)
     throttle.clear(ip)
     response = JSONResponse({"ok": True})
     response.set_cookie(COOKIE, token, max_age=auth.SESSION_DAYS * 86400, secure=True,
@@ -148,8 +174,7 @@ def login(body: LoginIn, request: Request):
 
 @app.post("/api/logout")
 def logout(request: Request):
-    with Db() as conn:
-        auth.delete_session(conn, request.cookies.get(COOKIE))
+    users.delete_session(request.cookies.get(COOKIE))
     response = JSONResponse({"ok": True})
     response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
     return response
@@ -270,10 +295,10 @@ def overview():
         date = db.get_setting(conn, "race_date", coach.DEFAULT_RACE_DATE)
         last_sync = db.get_setting(conn, "last_sync_at")
         error = db.get_setting(conn, "last_sync_error", "")
-        alerts = health.alerts(conn)
+        alerts = _claude_key_alerts() + health.alerts(conn)
         calendar_only = coach.calendar_only_sessions(conn, week.isoformat(), (week + dt.timedelta(days=6)).isoformat(), today.isoformat())
         recovery = _recovery(conn, today)
-        athlete_name = db.get_setting(conn, "athlete_name", DEFAULT_NAME)
+        athlete_name = db.get_setting(conn, "athlete_name", current_user.get().display_name)
     sports = {}
     for sport in ("swim", "bike", "run", "strength", "other"):
         sports[sport] = {"planned_min": 0, "done_min": 0}
@@ -470,6 +495,7 @@ class AnalysisIn(BaseModel):
 
 @app.post("/api/analyses", status_code=202)
 def request_analysis(body: AnalysisIn):
+    _require_claude()
     with Db() as conn:
         if body.scope == "activity":
             digits = body.ref.removeprefix("-")
@@ -671,6 +697,7 @@ def chat_list():
 
 @app.post("/api/chat", status_code=202)
 def chat_send(body: ChatIn):
+    _require_claude()
     text = body.message.strip()
     if not text:
         raise HTTPException(400, "Die Nachricht ist leer.")
@@ -690,6 +717,7 @@ def chat_send(body: ChatIn):
 
 @app.post("/api/chat/{message_id}/retry", status_code=202)
 def chat_retry(message_id: int):
+    _require_claude()
     with Db() as conn:
         cur = conn.execute("UPDATE chat_messages SET status='pending',error=NULL WHERE id=? AND status='failed'", (message_id,))
         conn.commit()
@@ -837,6 +865,46 @@ class SettingsIn(BaseModel):
     athlete_name: str | None = Field(default=None, max_length=40)
 
 
+NO_KEY = "Für Trainer und Auswertungen fehlt noch dein Anthropic-API-Key. Trage ihn unter Einstellungen → Claude ein."
+
+
+def _needs_key() -> bool:
+    return current_user.get().own_key and anthropic_key.read_key() is None
+
+
+def _require_claude() -> None:
+    if _needs_key():
+        raise HTTPException(400, NO_KEY)
+
+
+def _claude_key_alerts() -> list[dict]:
+    return [{"level": "warning", "text": NO_KEY}] if _needs_key() else []
+
+
+class ClaudeKeyIn(BaseModel):
+    key: str = Field(min_length=20, max_length=400)
+
+
+@app.post("/api/settings/claude-key")
+def put_claude_key(body: ClaudeKeyIn):
+    if not current_user.get().own_key:
+        raise HTTPException(400, "Dein Dashboard nutzt die Claude-Anmeldung des Servers, ein Key ist nicht nötig.")
+    key = body.key.strip()
+    if not anthropic_key.PATTERN.match(key):
+        raise HTTPException(400, "Das sieht nicht wie ein Anthropic-API-Key aus (beginnt mit sk-ant-).")
+    anthropic_key.save_key(key)
+    with Db() as conn:
+        db.set_setting(conn, "claude_error", "")
+        conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/settings/claude-key")
+def remove_claude_key():
+    anthropic_key.delete_key()
+    return {"ok": True}
+
+
 class KeyIn(BaseModel):
     key: str = Field(min_length=8, max_length=2000)
     valid_days: int | None = Field(default=None, ge=1, le=366)
@@ -862,8 +930,10 @@ def get_settings():
             "race_name": db.get_setting(conn, "race_name", coach.DEFAULT_RACE_NAME),
             "race_date": db.get_setting(conn, "race_date", coach.DEFAULT_RACE_DATE),
             "athlete_notes": db.get_setting(conn, "athlete_notes", ""),
-            "athlete_name": db.get_setting(conn, "athlete_name", DEFAULT_NAME),
+            "athlete_name": db.get_setting(conn, "athlete_name", current_user.get().display_name),
             "garmin_key_set": garmin.read_key() is not None,
+            "claude_own_key": current_user.get().own_key,
+            "claude_key": anthropic_key.masked(anthropic_key.read_key()) if current_user.get().own_key else "",
             "garmin_key_expires": db.get_setting(conn, "garmin_key_expires", ""),
             "calendar_count": len(gcal.read_urls()),
             "calendar_training_terms": db.get_setting(conn, "calendar_training_terms", ""),
@@ -912,7 +982,7 @@ def put_key(body: KeyIn):
         db.set_setting(conn, "garmin_key_expiry_hint", "")
         db.set_setting(conn, "last_sync_error", "")
         conn.commit()
-    threading.Thread(target=run_sync_guarded, daemon=True).start()
+    sync_in_background()
     return {"ok": True}
 
 
@@ -1004,10 +1074,21 @@ def _whoop_page(text: str, ok: bool) -> Response:
 
 @app.get(WHOOP_CALLBACK)
 def whoop_callback(state: str = "", code: str = "", error: str = ""):
-    with Db() as conn:
-        valid = whoop.take_state(conn, state)
-    if not valid:
+    # Ohne Sitzung: Der Benutzer ergibt sich aus dem state, den nur seine Sitzung erzeugt haben kann.
+    owner = None
+    for user in users.all_users():
+        with db.use(user.dir), Db() as conn:
+            if whoop.take_state(conn, state):
+                owner = user
+                conn.commit()
+                break
+    if owner is None:
         return _whoop_page("Diese Anmeldung ist abgelaufen oder ungültig. Starte sie in den Einstellungen neu.", False)
+    with db.use(owner.dir):
+        return _finish_whoop(code, error)
+
+
+def _finish_whoop(code: str, error: str) -> Response:
     if error or not code:
         return _whoop_page("WHOOP hat den Zugriff nicht freigegeben.", False)
     try:
@@ -1019,7 +1100,7 @@ def whoop_callback(state: str = "", code: str = "", error: str = ""):
         db.set_setting(conn, "whoop_error", "")
         db.set_setting(conn, "whoop_initial_sync_done", "")
         conn.commit()
-    threading.Thread(target=run_sync_guarded, daemon=True).start()
+    sync_in_background()
     return _whoop_page("WHOOP ist verbunden. Die Erholungsdaten der letzten 60 Tage werden geladen.", True)
 
 

@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import db
+from . import db, users
 
 log = logging.getLogger("backup")
 KEEP = 30
@@ -18,7 +18,10 @@ NAME = re.compile(r"^triathlon-\d{4}-\d{2}-\d{2}_\d{6}\.db\.gz$")
 
 
 def backup_dir() -> Path:
-    return Path(os.environ.get("TRI_BACKUP_DIR", "/var/backups/triathlon-dashboard"))
+    """Davids Sicherungen liegen wie bisher direkt im Ordner, die anderer Benutzer in users/<name>."""
+    base = Path(os.environ.get("TRI_BACKUP_DIR", "/var/backups/triathlon-dashboard"))
+    relative = db.data_dir().resolve().relative_to(db.ROOT_DIR.resolve())
+    return base / relative
 
 
 def list_backups() -> list[Path]:
@@ -68,6 +71,15 @@ def prune(keep: int = KEEP) -> int:
 
 
 def run() -> int:
+    failed = 0
+    for user in users.all_users():
+        with db.use(user.dir):
+            log.info("Benutzer %s", user.name)
+            failed |= run_one()
+    return failed
+
+
+def run_one() -> int:
     conn = db.connect()
     try:
         try:

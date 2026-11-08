@@ -38,7 +38,7 @@ class KeyRejected(GarminError):
 
 
 def key_path():
-    return db.DATA_DIR / "garmin.key"
+    return db.data_dir() / "garmin.key"
 
 
 def read_key() -> str | None:

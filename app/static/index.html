@@ -14,6 +14,7 @@
     <p id="greeting-sub" class="muted"></p>
   </div>
   <div class="top-actions">
+    <span id="race-chip" class="race-chip" hidden></span>
     <button id="btn-sync" class="sync-pill" title="Jetzt mit Garmin und WHOOP abgleichen">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5A5.6 5.6 0 0 0 3.2 4.6M2.5 9.5a5.6 5.6 0 0 0 10.3 1.9M3 1.8v3h3M13 14.2v-3h-3"/></svg>
       <span id="sync-status">Abgleichen</span>
@@ -30,41 +31,16 @@
 <div id="banner" class="banner" role="status" hidden></div>
 
 <main>
-  <section class="stats" id="stats" aria-label="Überblick"></section>
+  <nav class="tabs" role="tablist" aria-label="Bereiche">
+    <button type="button" role="tab" id="tab-home" aria-controls="p-home" aria-selected="true" data-hash="">Übersicht</button>
+    <button type="button" role="tab" id="tab-calendar" aria-controls="p-calendar" aria-selected="false" data-hash="kalender">Kalender</button>
+    <button type="button" role="tab" id="tab-trends" aria-controls="p-trends" aria-selected="false" data-hash="verlauf">Verlauf</button>
+    <button type="button" role="tab" id="tab-activities" aria-controls="p-activities" aria-selected="false" data-hash="trainings">Trainings</button>
+  </nav>
 
-  <div class="home">
-  <section class="card calendar-card">
-    <div class="section-head">
-      <h2 id="month-title" class="month-title"></h2>
-      <div class="actions">
-        <button id="prev-month" aria-label="Voriger Monat">‹</button>
-        <button id="this-month">Heute</button>
-        <button id="next-month" aria-label="Nächster Monat">›</button>
-      </div>
-    </div>
-    <div class="calendar" id="calendar"></div>
-    <div class="legend" id="sport-legend"></div>
-  </section>
-
-    <div class="home-side">
-  <section class="card">
-    <div class="section-head">
-      <h2>Wochenumfang</h2>
-      <div class="filters">
-        <div class="segmented" id="weekly-sport" role="group" aria-label="Sportart"></div>
-        <div class="segmented" id="weekly-metric" role="group" aria-label="Messgröße"></div>
-        <div class="segmented" id="weekly-range" role="group" aria-label="Zeitraum"></div>
-      </div>
-    </div>
-    <div class="weekly-hero">
-      <div class="k" id="weekly-label"></div>
-      <div class="value" id="weekly-value"></div>
-      <div class="note" id="weekly-note"></div>
-    </div>
-    <div id="chart-weekly" class="chart"></div>
-    <details class="table-view"><summary>Als Tabelle anzeigen</summary><div id="weekly-table"></div></details>
-  </section>
-
+  <!-- Übersicht: was heute und diese Woche zählt -->
+  <section class="panel" id="p-home" role="tabpanel" aria-labelledby="tab-home">
+    <div class="home-top">
       <section class="card today-card">
         <div class="section-head">
           <h2 id="today-title">Heute</h2>
@@ -72,53 +48,113 @@
         </div>
         <div id="today-entries"></div>
         <div id="today-recovery" class="today-recovery"></div>
-        <button id="today-ask" class="primary today-ask" type="button">Trainer fragen: Was heute?</button>
+        <div id="today-complaints"></div>
+        <div class="today-actions">
+          <button id="today-ask" class="primary" type="button">Trainer fragen: Was heute?</button>
+          <button id="complaint-new" type="button">Beschwerde melden</button>
+        </div>
       </section>
 
-      <section class="card complaints-card">
-        <div class="section-head">
-          <h2>Beschwerden</h2>
-          <button id="complaint-new" type="button">+ Neue Beschwerde</button>
-        </div>
-        <div id="complaints"></div>
+      <section class="card week-card">
+        <div class="section-head"><h2>Diese Woche</h2><span id="week-range" class="muted"></span></div>
+        <div id="week-progress"></div>
       </section>
     </div>
-  </div>
-
-  <div class="columns">
-    <section class="card">
-      <div class="section-head"><h2>Letzte Trainings</h2><button id="btn-add-activity" class="primary">+ Training hinzufügen</button></div>
-      <div id="recent"></div>
-    </section>
 
     <section class="card">
       <div class="section-head">
-        <h2 id="week-title">Wochenauswertung</h2>
+        <h2 id="strip-title">Woche im Blick</h2>
         <div class="actions">
-          <button id="prev-week" aria-label="Vorige Woche">‹</button>
-          <button id="next-week" aria-label="Nächste Woche">›</button>
-          <button id="btn-week" class="primary">Woche auswerten</button>
+          <button id="strip-prev" type="button" aria-label="Vorige Woche">‹</button>
+          <button id="strip-today" type="button">Heute</button>
+          <button id="strip-next" type="button" aria-label="Nächste Woche">›</button>
+          <button type="button" data-goto="tab-calendar">Monat</button>
         </div>
       </div>
-      <div id="week-analysis" class="analysis"></div>
+      <div class="week-strip" id="week-strip"></div>
     </section>
-  </div>
 
-  <section class="card">
-    <div class="section-head"><h2>Aufteilung nach Sportart, letzte 12 Wochen</h2></div>
-    <div id="chart-volume" class="chart"></div>
-    <div class="legend" id="volume-legend"></div>
-    <details class="table-view"><summary>Als Tabelle anzeigen</summary><div id="volume-table"></div></details>
+    <div class="columns">
+      <section class="card">
+        <div class="section-head"><h2>Letzte Trainings</h2><button type="button" class="link" data-goto="tab-activities">Alle anzeigen</button></div>
+        <div id="recent-short"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2 id="week-title">Wochenauswertung</h2>
+          <div class="actions">
+            <button id="prev-week" aria-label="Vorige Woche">‹</button>
+            <button id="next-week" aria-label="Nächste Woche">›</button>
+            <button id="btn-week" class="primary">Woche auswerten</button>
+          </div>
+        </div>
+        <div id="week-analysis" class="analysis clamped"></div>
+        <button id="week-more" type="button" class="link" hidden>Ganz lesen</button>
+      </section>
+    </div>
   </section>
 
-  <section class="card">
-    <div class="section-head"><h2>Erholung, letzte 6 Wochen</h2></div>
-    <div class="small-multiples">
-      <div id="chart-recovery-box" hidden><h3>WHOOP Recovery (%)</h3><div id="chart-recovery" class="chart small"></div></div>
-      <div><h3 id="chart-hrv-title">HRV (ms)</h3><div id="chart-hrv" class="chart small"></div></div>
-      <div><h3>Ruhepuls (bpm)</h3><div id="chart-rhr" class="chart small"></div></div>
-      <div><h3>Schlaf (Stunden)</h3><div id="chart-sleep" class="chart small"></div></div>
-    </div>
+  <!-- Kalender: der Monat wie bisher -->
+  <section class="panel" id="p-calendar" role="tabpanel" aria-labelledby="tab-calendar" hidden>
+    <section class="card calendar-card">
+      <div class="section-head">
+        <h2 id="month-title" class="month-title"></h2>
+        <div class="actions">
+          <button id="prev-month" aria-label="Voriger Monat">‹</button>
+          <button id="this-month">Heute</button>
+          <button id="next-month" aria-label="Nächster Monat">›</button>
+        </div>
+      </div>
+      <div class="calendar" id="calendar"></div>
+      <div class="legend" id="sport-legend"></div>
+    </section>
+  </section>
+
+  <!-- Verlauf: Umfang, Erholung, frühere Beschwerden -->
+  <section class="panel" id="p-trends" role="tabpanel" aria-labelledby="tab-trends" hidden>
+    <section class="card">
+      <div class="section-head">
+        <h2>Umfang pro Woche</h2>
+        <div class="filters">
+          <div class="segmented" id="weekly-sport" role="group" aria-label="Sportart"></div>
+          <div class="segmented" id="weekly-metric" role="group" aria-label="Messgröße"></div>
+          <div class="segmented" id="weekly-range" role="group" aria-label="Zeitraum"></div>
+        </div>
+      </div>
+      <div class="weekly-hero">
+        <div class="k" id="weekly-label"></div>
+        <div class="value" id="weekly-value"></div>
+        <div class="note" id="weekly-note"></div>
+      </div>
+      <div id="chart-weekly" class="chart"></div>
+      <div class="legend" id="weekly-legend" hidden></div>
+      <details class="table-view"><summary>Als Tabelle anzeigen</summary><div id="weekly-table"></div></details>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Erholung, letzte 6 Wochen</h2></div>
+      <div class="small-multiples">
+        <div id="chart-recovery-box" hidden><h3>WHOOP Recovery (%)</h3><div id="chart-recovery" class="chart small"></div></div>
+        <div><h3 id="chart-hrv-title">HRV (ms)</h3><div id="chart-hrv" class="chart small"></div></div>
+        <div><h3>Ruhepuls (bpm)</h3><div id="chart-rhr" class="chart small"></div></div>
+        <div><h3>Schlaf (Stunden)</h3><div id="chart-sleep" class="chart small"></div></div>
+      </div>
+    </section>
+
+    <section class="card complaints-card">
+      <div class="section-head"><h2>Beschwerden</h2></div>
+      <div id="complaints"></div>
+    </section>
+  </section>
+
+  <!-- Trainings: die ganze Liste -->
+  <section class="panel" id="p-activities" role="tabpanel" aria-labelledby="tab-activities" hidden>
+    <section class="card">
+      <div class="section-head"><h2>Alle Trainings</h2><button id="btn-add-activity" class="primary">+ Training hinzufügen</button></div>
+      <div id="recent"></div>
+      <button id="recent-more" type="button" class="more" hidden>Weitere laden</button>
+    </section>
   </section>
 </main>
 
@@ -299,6 +335,25 @@
     <div class="actions end">
       <button type="button" id="calendar-remove" class="danger" hidden>Verbindung trennen</button>
       <button type="submit" class="primary">Prüfen und speichern</button>
+    </div>
+  </form>
+  <form id="claude-form" class="settings-block" hidden>
+    <h3>Claude</h3>
+    <p id="claude-state" class="muted"></p>
+    <details id="claude-help">
+      <summary>So bekommst du einen API-Key</summary>
+      <ol class="muted whoop-steps">
+        <li>Melde dich in der <a href="https://platform.claude.com" target="_blank" rel="noopener noreferrer">Claude Console</a> an und lade unter „Billing“ Guthaben auf.</li>
+        <li>Lege unter „API Keys“ einen neuen Key an und kopiere ihn hierher.</li>
+        <li>Am besten setzt du dort auch ein monatliches Ausgabenlimit.</li>
+      </ol>
+    </details>
+    <label>API-Key<input id="set-claude-key" type="password" autocomplete="off" spellcheck="false" maxlength="400" placeholder="sk-ant-…"></label>
+    <p class="muted">Trainer und Auswertungen laufen nur über diesen Key und werden darüber abgerechnet. Der Key wird nie wieder angezeigt.</p>
+    <p id="claude-error" class="error" role="alert" hidden></p>
+    <div class="actions end">
+      <button type="button" id="claude-remove" class="danger" hidden>Key entfernen</button>
+      <button type="submit" class="primary">Speichern</button>
     </div>
   </form>
   <form id="whoop-form" class="settings-block">

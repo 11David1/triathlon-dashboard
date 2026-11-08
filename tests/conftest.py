@@ -1,4 +1,5 @@
 import base64
+import shutil
 import json
 import os
 import tempfile
@@ -11,8 +12,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, db, garmin, gcal, whoop
+from app import auth, db, garmin, gcal, users, whoop
 from app.main import app, throttle
+
+# Tests ohne Anfrage arbeiten in Davids Datenordner, wie die Web-App nach seinem Login.
+db._current_dir.set(db.ROOT_DIR)
 
 PASSWORD = "richtig-langes-passwort"
 JWT = "h." + base64.urlsafe_b64encode(json.dumps({"exp": time.time() + 86400}).encode()).decode().rstrip("=") + ".s"
@@ -64,11 +68,19 @@ def fake():
 
 @pytest.fixture
 def anon(fake):
+    shutil.rmtree(db.ROOT_DIR / "users", ignore_errors=True)
+    users.init()
     db.init()
+    accounts = users.connect()
+    accounts.execute("DELETE FROM users")
+    accounts.execute("DELETE FROM sessions")
+    accounts.execute("INSERT INTO users(name,display_name,dir,password_hash,created_at,claude) VALUES('david','David','.',?,0,'abo')",
+                     (auth.hash_password(PASSWORD),))
+    accounts.commit()
+    accounts.close()
     conn = db.connect()
-    for table in ("settings", "sessions", "planned", "activities", "wellness", "analyses", "chat_messages", "trainer_knowledge", "complaints", "complaint_entries", "calendar_events"):
+    for table in ("settings", "planned", "activities", "wellness", "analyses", "chat_messages", "trainer_knowledge", "complaints", "complaint_entries", "calendar_events"):
         conn.execute(f"DELETE FROM {table}")
-    db.set_setting(conn, "password_hash", auth.hash_password(PASSWORD))
     conn.commit()
     conn.close()
     garmin.delete_key()
@@ -83,5 +95,5 @@ def anon(fake):
 
 @pytest.fixture
 def client(anon):
-    assert anon.post("/api/login", json={"password": PASSWORD}).status_code == 200
+    assert anon.post("/api/login", json={"username": "david", "password": PASSWORD}).status_code == 200
     return anon

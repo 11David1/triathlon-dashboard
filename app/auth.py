@@ -1,12 +1,10 @@
-"""Passwort (scrypt), serverseitige Sessions und Bremse gegen Passwort-Raten."""
+"""Passwort-Hash (scrypt) und Bremse gegen Passwort-Raten. Sitzungen: siehe users.py."""
 import base64
 import hashlib
 import hmac
 import secrets
 import threading
 import time
-
-from . import db
 
 SESSION_DAYS = 30
 SCRYPT = {"n": 2**15, "r": 8, "p": 1, "maxmem": 64 * 1024 * 1024, "dklen": 32}
@@ -29,35 +27,8 @@ def verify_password(password: str, stored: str | None) -> bool:
     return hmac.compare_digest(key, base64.b64decode(key_b64))
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def create_session(conn) -> str:
-    token = secrets.token_urlsafe(32)
-    now = time.time()
-    conn.execute("DELETE FROM sessions WHERE expires_at<?", (now,))
-    conn.execute(
-        "INSERT INTO sessions(token_hash,expires_at) VALUES(?,?)",
-        (_hash_token(token), now + SESSION_DAYS * 86400),
-    )
-    conn.commit()
-    return token
-
-
-def session_valid(conn, token: str | None) -> bool:
-    if not token:
-        return False
-    row = conn.execute(
-        "SELECT expires_at FROM sessions WHERE token_hash=?", (_hash_token(token),)
-    ).fetchone()
-    return bool(row and row["expires_at"] > time.time())
-
-
-def delete_session(conn, token: str | None) -> None:
-    if token:
-        conn.execute("DELETE FROM sessions WHERE token_hash=?", (_hash_token(token),))
-        conn.commit()
 
 
 class Throttle:

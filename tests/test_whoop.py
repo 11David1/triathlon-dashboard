@@ -92,7 +92,7 @@ def connect(client, fake):
 
 
 def test_connect_stores_tokens_privately_and_never_shows_them(client, fw, monkeypatch):
-    monkeypatch.setattr("app.main.threading.Thread", lambda **_: type("T", (), {"start": lambda self: None})())
+    monkeypatch.setattr("app.main.sync_in_background", lambda: None)
     state = connect(client, fw)
     client.cookies.clear()  # der Rückweg kommt ohne Sitzungs-Cookie an
     page = client.get(f"/api/whoop/callback?state={state}&code=good-code", follow_redirects=False)
@@ -124,7 +124,7 @@ def test_callback_with_bad_code_or_denial(client, fw):
 
 
 def test_secrets_not_in_settings(client, fw, monkeypatch):
-    monkeypatch.setattr("app.main.threading.Thread", lambda **_: type("T", (), {"start": lambda self: None})())
+    monkeypatch.setattr("app.main.sync_in_background", lambda: None)
     state = connect(client, fw)
     client.get(f"/api/whoop/callback?state={state}&code=good-code")
     text = client.get("/api/settings").text
